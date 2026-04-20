@@ -24,10 +24,18 @@ def main():
     """
     # Read command line arguments and environment configuration
     algo_args = get_args()
+    
+    if not algo_args.use_wandb:
+        os.environ["WANDB_MODE"] = "disabled"
+    
     env_config = config = Config()
     
     # Create unique model name based on configuration parameters
     model_name = f"{env_config.note}_seed_{algo_args.seed}_curr_buffer_{env_config.aci_related.current_position_buffer}_c_l_{env_config.constrained_rl_related.cost_limit}_clip_param_{algo_args.clip_param}_considered_steps_{env_config.aci_related.considered_steps}_alpha_{env_config.aci_related.alpha}_noise_{env_config.aci_related.noise_clip_for_conformity_scores}_{env_config.aci_related.noise_clip_for_cost}"
+    
+    if hasattr(env_config, 'lora') and env_config.lora.use_lora:
+        model_name += f"_lora_r{env_config.lora.rank}_a{env_config.lora.alpha}"
+        
     env_config.model_name = model_name
     algo_args.output_dir = f"trained_models/{model_name}"
     
@@ -104,7 +112,29 @@ def main():
 
     # Resume training from checkpoint if specified
     if algo_args.resume:
-        raise NotImplementedError
+        load_path = algo_args.load_path
+        print(f"Loading weights from {load_path}")
+        state_dict = torch.load(load_path, map_location=device)
+        
+        # If model has LoRA enabled, we may need to map standard keys to base_layer keys
+        if hasattr(env_config, 'lora') and env_config.lora.use_lora:
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                new_key = key
+                # Map standard linear layers to LoRA base_layers
+                if "critic_linear" in new_key and "base_layer" not in new_key:
+                    new_key = new_key.replace("critic_linear", "critic_linear.base_layer")
+                elif "dist.fc_mean" in new_key and "base_layer" not in new_key:
+                    new_key = new_key.replace("dist.fc_mean", "dist.fc_mean.base_layer")
+                elif "dist.linear" in new_key and "base_layer" not in new_key:
+                    new_key = new_key.replace("dist.linear", "dist.linear.base_layer")
+                
+                new_state_dict[new_key] = value
+            state_dict = new_state_dict
+
+        actor_critic.load_state_dict(state_dict, strict=False)
+        cost_actor_critic.load_state_dict(state_dict, strict=False)
+        print("Weights loaded successfully.")
 
     # Move networks to GPU if available
     nn.DataParallel(actor_critic).to(device)
@@ -145,12 +175,13 @@ def main():
 
     # Initialize Weights & Biases for experiment tracking
     trial_name = model_name
-    wandb.init(project="robot_crowd_navigation", name=trial_name)
-    # Define custom metrics for logging
-    wandb.define_metric("env_step")
-    wandb.define_metric("train_step")
-    wandb.define_metric("env/*", step_metric="env_step")
-    wandb.define_metric("train/*", step_metric="train_step")
+    if algo_args.use_wandb:
+        wandb.init(project="robot_crowd_navigation", name=trial_name)
+        # Define custom metrics for logging
+        wandb.define_metric("env_step")
+        wandb.define_metric("train_step")
+        wandb.define_metric("env/*", step_metric="env_step")
+        wandb.define_metric("train/*", step_metric="train_step")
     
     # Save experiment name to file
     note_file_path = os.path.join(algo_args.output_dir, 'note.txt')
@@ -183,10 +214,17 @@ def main():
     # Initialize tracking queues for episode statistics
     episode_rewards = deque(maxlen=500)
     episode_collisions = deque(maxlen=500)
+    episode_success = deque(maxlen=500)
+    episode_path_length = deque(maxlen=500)
     episode_costs = deque(maxlen=500)
     episode_costs_for_updating_lagrange = deque(maxlen=32)  # For Lagrange multiplier updates
     episode_rewards_for_showing_rewards = deque(maxlen=32)
     best_score = -10000
+
+    # For path length calculation
+    current_episode_path_length = np.zeros(algo_args.num_processes)
+    # Robustly extract px, py (first two features) regardless of extra dimensions (like sequence length)
+    last_robot_pos = obs['robot_node'][..., 0:2].reshape(algo_args.num_processes, 2).cpu().numpy()
 
     start = time.time()
     # Calculate total number of training updates
@@ -241,6 +279,13 @@ def main():
             # Take action and observe results
             obs, reward, done, infos = envs.step(action)
             
+            # Path length tracking
+            # Ensure it is (num_processes, 2) even if obs has extra dimensions
+            current_robot_pos = obs['robot_node'][..., 0:2].view(algo_args.num_processes, 2).cpu().numpy()
+            dist = np.linalg.norm(current_robot_pos - last_robot_pos, axis=1)
+            current_episode_path_length += dist
+            last_robot_pos = current_robot_pos
+
             # Get ACI predictions and add noise for robustness
             out_pred = obs['spatial_edges'][:, :, :].to('cpu').numpy()
             outs = envs.talk2Env(out_pred)
@@ -269,13 +314,27 @@ def main():
             processed_costs = torch.tensor([[infos[i]['cost']] for i in range(len(infos))])
             
             # Process episode completion and logging
-            for info in infos:
+            for i, info in enumerate(infos):
                 if 'episode' in info.keys():
                     # Track episode statistics
                     episode_rewards.append(info['episode']['r'])
                     episode_costs.append(info['episode']['c'])
                     episode_costs_for_updating_lagrange.append(info['episode']['c'])
                     episode_rewards_for_showing_rewards.append(info['episode']['r'])
+                    
+                    episode_path_length.append(current_episode_path_length[i])
+                    current_episode_path_length[i] = 0
+
+                    # Track success/collision
+                    if str(info['info']) == 'Collision':
+                        episode_collisions.append(1.0)
+                        episode_success.append(0.0)
+                    elif str(info['info']) == 'Reaching goal':
+                        episode_collisions.append(0.0)
+                        episode_success.append(1.0)
+                    else:
+                        episode_collisions.append(0.0)
+                        episode_success.append(0.0)
 
                     # Save best model based on recent performance
                     mean_num_for_saving = 200
@@ -298,22 +357,19 @@ def main():
                         torch.save(cost_actor_critic.state_dict(),
                                    os.path.join(cost_save_path_best, 'PPO_cost' + ".pt"))
                 
-                    # Track collision events
-                    if str(info['info']) == 'Collision':
-                        episode_collisions.append(1.0)
-                    else:
-                        episode_collisions.append(0.0)
-                    
                     # Log environment metrics to wandb
-                    env_iter += 1
-                    wandb.log({
-                        "env_step": env_iter,
-                        "env/Collision": 1 if str(info['info']) == 'Collision' else 0,
-                        "env/ReachGoal": 1 if str(info['info']) == 'Reaching goal' else 0,
-                        "env/Timeout": 1 if str(info['info']) == 'Timeout' else 0,
-                        "env/Episode_Rewards": info['episode']['r'],
-                        "env/Episode_Costs": info['episode']['c'],
-                    })
+                    if wandb.run:
+                        env_iter += 1
+                        wandb.log({
+                            "env_step": env_iter,
+                            "env/Collision": 1 if str(info['info']) == 'Collision' else 0,
+                            "env/ReachGoal": 1 if str(info['info']) == 'Reaching goal' else 0,
+                            "env/Timeout": 1 if str(info['info']) == 'Timeout' else 0,
+                            "env/Episode_Rewards": info['episode']['r'],
+                            "env/Episode_Costs": info['episode']['c'],
+                            "env/Success_Rate": np.mean(episode_success),
+                            "env/Path_Length": episode_path_length[-1] if len(episode_path_length)>0 else 0
+                        })
                                         
             # Create masks for episode termination handling
             masks = torch.FloatTensor(
@@ -353,26 +409,35 @@ def main():
                                  algo_args.use_proper_time_limits)
 
         # Perform policy update
-        mean_ep_costs = np.mean(np.array(episode_costs_for_updating_lagrange))
-        mean_ep_rewards = np.mean(np.array(episode_rewards_for_showing_rewards))
+        if len(episode_costs_for_updating_lagrange) > 0:
+            mean_ep_costs = np.mean(np.array(episode_costs_for_updating_lagrange))
+        else:
+            mean_ep_costs = 0.0
+            
+        if len(episode_rewards_for_showing_rewards) > 0:
+            mean_ep_rewards = np.mean(np.array(episode_rewards_for_showing_rewards))
+        else:
+            mean_ep_rewards = 0.0
+            
         value_loss, cost_value_loss, lag_factor, action_loss, dist_entropy, adv_targ_epoch, cost_adv_targ_epoch = agent.update(rollouts, mean_ep_costs)
 
         rollouts.after_update()
         
         # Log training metrics
-        train_iter += 1
-        wandb.log({
-            "train_step": train_iter,
-            "train/value_loss": value_loss,
-            "train/cost_value_loss": cost_value_loss,
-            "train/lag_factor": lag_factor,
-            "train/action_loss": action_loss,
-            "train/dist_entropy": dist_entropy,
-            "train/adv_targ_epoch": adv_targ_epoch,
-            "train/cost_adv_targ_epoch": cost_adv_targ_epoch,
-            "train/mean_ep_costs": mean_ep_costs,
-            "train/mean_ep_rewards": mean_ep_rewards
-        })
+        if algo_args.use_wandb:
+            train_iter += 1
+            wandb.log({
+                "train_step": train_iter,
+                "train/value_loss": value_loss,
+                "train/cost_value_loss": cost_value_loss,
+                "train/lag_factor": lag_factor,
+                "train/action_loss": action_loss,
+                "train/dist_entropy": dist_entropy,
+                "train/adv_targ_epoch": adv_targ_epoch,
+                "train/cost_adv_targ_epoch": cost_adv_targ_epoch,
+                "train/mean_ep_costs": mean_ep_costs,
+                "train/mean_ep_rewards": mean_ep_rewards
+            })
 
         # Save model checkpoints periodically
         if j % algo_args.save_interval == 0 or j == num_updates - 1:
@@ -414,13 +479,16 @@ def main():
                     np.max(episode_rewards)
                 )
             )
-            print(f"Collision rate across last {len(episode_collisions)} episodes: {np.mean(episode_collisions):.2f}")
+            print(f"Collision rate: {np.mean(episode_collisions):.2f}, Success rate: {np.mean(episode_success):.2f}, Path length: {np.mean(episode_path_length):.2f}")
 
             # Save training progress to CSV
             df = pd.DataFrame({'misc/nupdates': [j],
                                'misc/total_timesteps': [total_num_steps],
                                'fps': int(total_num_steps / (end - start)),
                                'eprewmean': [np.mean(episode_rewards)],
+                               'epsuccessmean': [np.mean(episode_success)],
+                               'epcollisionmean': [np.mean(episode_collisions)],
+                               'eppathlengthmean': [np.mean(episode_path_length)],
                                'loss/policy_entropy': dist_entropy,
                                'loss/policy_loss': action_loss,
                                'loss/value_loss': value_loss})

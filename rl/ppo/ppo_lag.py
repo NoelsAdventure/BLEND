@@ -40,8 +40,8 @@ class PPOLag():
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
 
-        self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
-        self.cost_optimizer = optim.Adam(cost_actor_critic.parameters(), lr=lr/2, eps=eps) # tag 05/06/2024
+        self.optimizer = optim.Adam(filter(lambda p: p.requires_grad, actor_critic.parameters()), lr=lr, eps=eps)
+        self.cost_optimizer = optim.Adam(filter(lambda p: p.requires_grad, cost_actor_critic.parameters()), lr=lr/2, eps=eps) # tag 05/06/2024
         
         lagrange_cfgs = {
             'cost_limit': cost_limit, 

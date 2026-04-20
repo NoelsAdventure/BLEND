@@ -1,0 +1,2 @@
+misc/nupdates,misc/total_timesteps,fps,eprewmean,epsuccessmean,epcollisionmean,loss/policy_entropy,loss/policy_loss,loss/value_loss
+20,80640,299,12.717907,0.58,0.42,1.4189385175704956,0.013393560483018518,18.98581757545471

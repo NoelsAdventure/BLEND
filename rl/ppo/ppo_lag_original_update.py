@@ -35,7 +35,7 @@ class PPOLagOriginalUpdate():
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
 
-        self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
+        self.optimizer = optim.Adam(filter(lambda p: p.requires_grad, actor_critic.parameters()), lr=lr, eps=eps)
 
     def update(self, rollouts, mean_ep_costs):
         advantages = rollouts.returns[:-1] - rollouts.value_preds[:-1]

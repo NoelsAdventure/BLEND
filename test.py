@@ -32,28 +32,39 @@ def main():
     parser.add_argument('--render_traj', default=False, action='store_true')
     # whether to save slide show of episodes
     parser.add_argument('--save_slides', default=False, action='store_true')
-    test_args = parser.parse_args()
+    
+    # Use parse_known_args so test.py only takes what it needs
+    test_args, unknown = parser.parse_known_args()
+    
     if test_args.save_slides:
         test_args.visualize = True
 
-    from importlib import import_module
+    import importlib.util
+
     model_dir_temp = test_args.model_dir
     if model_dir_temp.endswith('/'):
         model_dir_temp = model_dir_temp[:-1]
-    
-    model_dir_string = model_dir_temp.replace('/', '.') + '.arguments'
-    model_arguments = import_module(model_dir_string)
+
+    # Load arguments from the model directory
+    args_file_path = os.path.join(model_dir_temp, 'arguments.py')
+    spec = importlib.util.spec_from_file_location("model_arguments", args_file_path)
+    model_arguments = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(model_arguments)
     get_args = getattr(model_arguments, 'get_args')
 
+    # Temporarily hide test-specific args from get_args()
+    import sys
+    orig_argv = sys.argv
+    sys.argv = [orig_argv[0]] + unknown
     algo_args = get_args()
+    sys.argv = orig_argv
 
-    # import config class from saved directory
-    # if not found, import from the default directory
-
-
-    model_dir_string = model_dir_temp.replace('/', '.') + '.configs.config'
-    model_arguments = import_module(model_dir_string)
-    Config = getattr(model_arguments, 'Config')
+    # Load config from the model directory
+    config_file_path = os.path.join(model_dir_temp, 'configs/config.py')
+    spec = importlib.util.spec_from_file_location("model_config", config_file_path)
+    model_config_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(model_config_mod)
+    Config = getattr(model_config_mod, 'Config')
 
     env_config = config = Config()
     env_config.aci_related.noise_clip_for_conformity_scores = 0.0

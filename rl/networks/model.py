@@ -5,6 +5,7 @@ import torch.nn as nn
 from rl.networks.distributions import Bernoulli, Categorical, DiagGaussian
 from .srnn_model import SRNN
 from .selfAttn_srnn_temp_node import selfAttn_merge_SRNN
+from .network_utils import LoRALinear
 
 class Flatten(nn.Module):
     def forward(self, x):
@@ -40,6 +41,35 @@ class Policy(nn.Module):
             self.dist = Bernoulli(self.base.output_size, num_outputs)
         else:
             raise NotImplementedError
+            
+        self.critic_linear = nn.Linear(self.base.output_size, 1)
+
+        # Apply LoRA if configured
+        if hasattr(config, 'lora') and config.lora.use_lora:
+            print(f"Applying LoRA with rank {config.lora.rank} and alpha {config.lora.alpha}")
+            
+            # 1. Freeze everything in the base and distribution first
+            for param in self.base.parameters():
+                param.requires_grad = False
+            for param in self.dist.parameters():
+                param.requires_grad = False
+            for param in self.critic_linear.parameters():
+                param.requires_grad = False
+
+            # 2. Wrap critic with LoRA (LoRALinear will unfreeze its own A/B matrices)
+            self.critic_linear = LoRALinear(self.critic_linear, 
+                                            rank=config.lora.rank, 
+                                            lora_alpha=config.lora.alpha)
+            
+            # 3. Wrap actor (distribution) with LoRA
+            if hasattr(self.dist, 'fc_mean'):
+                self.dist.fc_mean = LoRALinear(self.dist.fc_mean, 
+                                               rank=config.lora.rank, 
+                                               lora_alpha=config.lora.alpha)
+            elif hasattr(self.dist, 'linear'):
+                self.dist.linear = LoRALinear(self.dist.linear, 
+                                              rank=config.lora.rank, 
+                                              lora_alpha=config.lora.alpha)
 
     @property
     def is_recurrent(self):
@@ -61,6 +91,11 @@ class Policy(nn.Module):
 
         else:
             value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
+            
+        # If LoRA is used, value comes from the base and needs to be overridden by the wrapped critic_linear
+        if hasattr(self.config, 'lora') and self.config.lora.use_lora:
+            value = self.critic_linear(actor_features)
+            
         dist = self.dist(actor_features)
 
         if deterministic:
@@ -75,12 +110,18 @@ class Policy(nn.Module):
 
     def get_value(self, inputs, rnn_hxs, masks):
 
-        value, _, _ = self.base(inputs, rnn_hxs, masks, infer=True)
+        value, actor_features, _ = self.base(inputs, rnn_hxs, masks, infer=True)
+        
+        if hasattr(self.config, 'lora') and self.config.lora.use_lora:
+            value = self.critic_linear(actor_features)
 
         return value
 
     def evaluate_actions(self, inputs, rnn_hxs, masks, action):
         value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
+        
+        if hasattr(self.config, 'lora') and self.config.lora.use_lora:
+            value = self.critic_linear(actor_features)
 
         dist = self.dist(actor_features)
 

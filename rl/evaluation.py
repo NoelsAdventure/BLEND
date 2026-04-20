@@ -39,6 +39,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     timeout_cases = []
 
     all_path_len = []
+    all_avg_uncertainty = []
 
     # to make it work with the virtualenv in sim2real
     if hasattr(eval_envs.venv, 'envs'):
@@ -58,6 +59,12 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         out_pred = obs['spatial_edges'][:, :, :].to('cpu').numpy()[0]
         outs = baseEnv.talk2Env(out_pred)
         aci_predicted_conformity_scores, aci_cost = outs#np.array([o[0] for o in outs]) # [num_envs, num_humans, num_pred_steps]
+        
+        # Track uncertainty for the episode
+        episode_uncertainties = []
+        if aci_predicted_conformity_scores is not None and len(aci_predicted_conformity_scores) > 0:
+            episode_uncertainties.append(np.mean(aci_predicted_conformity_scores))
+
         aci_predicted_conformity_scores = np.array([aci_predicted_conformity_scores])
         obs['conformity_scores'] = torch.from_numpy(aci_predicted_conformity_scores).to(torch.float32).to(device)
         global_time = 0.0
@@ -103,6 +110,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             out_pred = obs['spatial_edges'][:, :, :].to('cpu').numpy()[0]
             outs = baseEnv.talk2Env(out_pred)
             aci_predicted_conformity_scores, aci_cost = outs#np.array([o[0] for o in outs]) # [num_envs, num_humans, num_pred_steps]
+            
+            # Track uncertainty for each step
+            if aci_predicted_conformity_scores is not None and len(aci_predicted_conformity_scores) > 0:
+                episode_uncertainties.append(np.mean(aci_predicted_conformity_scores))
+
             aci_predicted_conformity_scores = np.array([aci_predicted_conformity_scores])
             obs['conformity_scores'] = torch.from_numpy(aci_predicted_conformity_scores).to(torch.float32).to(device)
             # render
@@ -136,7 +148,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         print('Episode', k, 'ends in', stepCounter)
         all_path_len.append(path_len)
         too_close_ratios.append(too_close/stepCounter*100)
-
+        
+        if len(episode_uncertainties) > 0:
+            all_avg_uncertainty.append(np.mean(episode_uncertainties))
+        else:
+            all_avg_uncertainty.append(0.0)
 
         if isinstance(infos[0]['info'], ReachGoal):
             success += 1
@@ -169,9 +185,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     logging.info(
         'Testing success rate: {:.4f}, collision rate: {:.4f}, timeout rate: {:.4f}, '
         'nav time: {:.4f}, path length: {:.4f}, average intrusion ratio: {:.4f}%, '
-        'average minimal distance during intrusions: {:.4f}'.
+        'average minimal distance during intrusions: {:.4f}, average prediction uncertainty: {:.4f}'.
             format(success_rate, collision_rate, timeout_rate, avg_nav_time, np.mean(all_path_len),
-                   np.mean(too_close_ratios), np.mean(min_dist)))
+                   np.mean(too_close_ratios), np.mean(min_dist), np.mean(all_avg_uncertainty)))
 
     logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
     logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
@@ -179,10 +195,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     file_path = os.path.join(model_dir, 'test', 'evaluation_data.csv')
     with open(file_path, 'w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['Success Times', 'Collision Times', 'Timeout Times', 'Path Length', 'Min Distance'])
+        writer.writerow(['Success Times', 'Collision Times', 'Timeout Times', 'Path Length', 'Min Distance', 'Avg Uncertainty'])
         
         # Determine the maximum length of the lists
-        max_length = max(len(success_times), len(collision_times), len(timeout_times), len(all_path_len), len(min_dist))
+        max_length = max(len(success_times), len(collision_times), len(timeout_times), len(all_path_len), len(min_dist), len(all_avg_uncertainty))
         
         # Write data to CSV, handling missing values directly
         for i in range(max_length):
@@ -191,7 +207,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 collision_times[i] if i < len(collision_times) else '',
                 timeout_times[i] if i < len(timeout_times) else '',
                 all_path_len[i] if i < len(all_path_len) else '',
-                min_dist[i] if i < len(min_dist) else ''
+                min_dist[i] if i < len(min_dist) else '',
+                all_avg_uncertainty[i] if i < len(all_avg_uncertainty) else ''
             ]
             writer.writerow(row)
     eval_envs.close()

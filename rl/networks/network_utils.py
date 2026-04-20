@@ -1,12 +1,49 @@
 import glob
 import os
+import math
 
+import torch
 import torch.nn as nn
 
 from rl.networks.envs import VecNormalize
 
+# ... rest of existing code ...
+
+class LoRALinear(nn.Module):
+    def __init__(self, base_layer, rank=8, lora_alpha=16, lora_dropout=0.0):
+        super(LoRALinear, self).__init__()
+        self.base_layer = base_layer
+        self.rank = rank
+        self.lora_alpha = lora_alpha
+        self.scaling = lora_alpha / rank
+        
+        in_features = base_layer.in_features
+        out_features = base_layer.out_features
+        
+        # LoRA matrices
+        self.lora_A = nn.Parameter(torch.zeros((rank, in_features)))
+        self.lora_B = nn.Parameter(torch.zeros((out_features, rank)))
+        
+        self.lora_dropout = nn.Dropout(p=lora_dropout)
+        
+        # Initialization
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B)
+        
+        # Freeze base layer
+        for param in self.base_layer.parameters():
+            param.requires_grad = False
+
+    def forward(self, x):
+        result = self.base_layer(x)
+        
+        # Add LoRA branch
+        lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling
+        return result + lora_out
+
 # Get a render function
 def get_render_func(venv):
+# ... existing code ...
     if hasattr(venv, 'envs'):
         return venv.envs[0].render
     elif hasattr(venv, 'venv'):
