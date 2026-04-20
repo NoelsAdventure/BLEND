@@ -31,10 +31,12 @@ def main():
     env_config = config = Config()
     
     # Create unique model name based on configuration parameters
-    model_name = f"{env_config.note}_seed_{algo_args.seed}_curr_buffer_{env_config.aci_related.current_position_buffer}_c_l_{env_config.constrained_rl_related.cost_limit}_clip_param_{algo_args.clip_param}_considered_steps_{env_config.aci_related.considered_steps}_alpha_{env_config.aci_related.alpha}_noise_{env_config.aci_related.noise_clip_for_conformity_scores}_{env_config.aci_related.noise_clip_for_cost}"
-    
     if hasattr(env_config, 'lora') and env_config.lora.use_lora:
-        model_name += f"_lora_r{env_config.lora.rank}_a{env_config.lora.alpha}"
+        # New LoRA naming convention: LORA_visi_invi_alpha_x
+        model_name = f"LORA_visi_invi_alpha_{env_config.lora.alpha}"
+    else:
+        # Keep original naming for standard models
+        model_name = f"{env_config.note}_seed_{algo_args.seed}_curr_buffer_{env_config.aci_related.current_position_buffer}_c_l_{env_config.constrained_rl_related.cost_limit}_clip_param_{algo_args.clip_param}_considered_steps_{env_config.aci_related.considered_steps}_alpha_{env_config.aci_related.alpha}_noise_{env_config.aci_related.noise_clip_for_conformity_scores}_{env_config.aci_related.noise_clip_for_cost}"
         
     env_config.model_name = model_name
     algo_args.output_dir = f"trained_models/{model_name}"
@@ -94,7 +96,7 @@ def main():
         base_kwargs=algo_args,
         base=config.robot.policy)
     
-    # Create cost critic network for constrained RL
+    # Create cost critic network for constrained RL (Both now use env_config with LoRA)
     cost_actor_critic = Policy(
         envs.observation_space.spaces,
         envs.action_space,
@@ -116,7 +118,7 @@ def main():
         print(f"Loading weights from {load_path}")
         state_dict = torch.load(load_path, map_location=device)
         
-        # If model has LoRA enabled, we may need to map standard keys to base_layer keys
+        # If model has LoRA enabled, we map standard keys to LoRA base_layer keys
         if hasattr(env_config, 'lora') and env_config.lora.use_lora:
             new_state_dict = {}
             for key, value in state_dict.items():
@@ -132,9 +134,10 @@ def main():
                 new_state_dict[new_key] = value
             state_dict = new_state_dict
 
+        # Load mapped weights into both networks (both now use LoRA)
         actor_critic.load_state_dict(state_dict, strict=False)
         cost_actor_critic.load_state_dict(state_dict, strict=False)
-        print("Weights loaded successfully.")
+        print("Weights loaded successfully into both networks.")
 
     # Move networks to GPU if available
     nn.DataParallel(actor_critic).to(device)

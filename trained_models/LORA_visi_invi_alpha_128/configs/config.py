@@ -194,7 +194,7 @@ class Config(object):
     lora = BaseConfig()
     lora.use_lora = True
     lora.rank = 8
-    lora.alpha = 1024
+    lora.alpha = 128
 
     if sim.predict_method == 'inferred' and env.use_wrapper == False:
         raise ValueError("If using inferred prediction, you must wrap the envs!")
