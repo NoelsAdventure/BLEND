@@ -9,13 +9,10 @@ import matplotlib.pyplot as plt
 import os
 import argparse
 import sys
+import glob
+import importlib.util
 
-# Try to find LoRALinear, if not define dummy for isinstance checks
-try:
-    from rl.networks.network_utils import LoRALinear
-except ImportError:
-    class LoRALinear: pass
-
+from rl.networks.network_utils import LoRALinear
 from rl.networks.model import Policy
 
 def plot_heatmap(data, title, save_path):
@@ -38,26 +35,27 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_dir', type=str, required=True, help='Path to model directory')
     parser.add_argument('--checkpoint', type=str, default=None, help='Specific checkpoint .pt file')
-    parser.add_argument('--mode', type=str, choices=['aggressive', 'conservative', 'base'], default='aggressive', 
-                        help='LoRA branch to visualize (only used if type is lora or both)')
     parser.add_argument('--type', type=str, choices=['lora', 'standard', 'both'], default='lora',
                         help='Which type of weights to visualize')
     args, unknown = parser.parse_known_args()
 
     # 1. Load Config and Setup Paths
     model_dir = args.model_dir.rstrip('/')
-    # Use insert(0) to prioritize local model configs/args
     sys.path.insert(0, model_dir)
     
-    from configs.config import Config as LoadedConfig
+    # Load local config if available, else use default
+    try:
+        from configs.config import Config as LoadedConfig
+    except ImportError:
+        from crowd_nav.configs.config import Config as LoadedConfig
+    
     config = LoadedConfig()
     
-    import importlib.util
+    # Load model arguments
     arg_spec = importlib.util.spec_from_file_location("model_arguments", os.path.join(model_dir, 'arguments.py'))
     model_arguments = importlib.util.module_from_spec(arg_spec)
     arg_spec.loader.exec_module(model_arguments)
     
-    # Temporarily hide visualize_weights-specific args from model_arguments.get_args()
     orig_argv = sys.argv
     sys.argv = [orig_argv[0]] + unknown
     algo_args = model_arguments.get_args()
@@ -65,13 +63,13 @@ def main():
 
     # 2. Find Checkpoint
     if args.checkpoint:
-        # Check both direct path and checkpoints/ subdirectory
         if os.path.exists(os.path.join(model_dir, 'checkpoints', args.checkpoint)):
             ckpt_path = os.path.join(model_dir, 'checkpoints', args.checkpoint)
-        else:
+        elif os.path.exists(os.path.join(model_dir, args.checkpoint)):
             ckpt_path = os.path.join(model_dir, args.checkpoint)
+        else:
+            ckpt_path = args.checkpoint
     else:
-        import glob
         ckpt_dir = os.path.join(model_dir, 'checkpoints')
         ckpts = sorted(glob.glob(os.path.join(ckpt_dir, '*.pt')), key=os.path.getmtime)
         ckpt_path = ckpts[-1] if ckpts else os.path.join(model_dir, 'best_model', 'PPO.pt')
@@ -84,9 +82,8 @@ def main():
     state_dict = torch.load(ckpt_path, map_location='cpu')
 
     # 3. Create Model and Load Weights
-    # Dummy obs shape for init
     dummy_obs_shape = {
-        'robot_node': torch.zeros(1, 9), # Changed from 7 to 9 to match selfAttn_merge_SRNN
+        'robot_node': torch.zeros(1, 9),
         'spatial_edges': torch.zeros(20, 2),
         'temporal_edges': torch.zeros(1, 2),
         'detected_human_num': torch.zeros(1),
@@ -117,17 +114,12 @@ def main():
         
         # A. LoRA Visualization
         if args.type in ['lora', 'both'] and isinstance(module, LoRALinear):
-            # Check if it actually has LoRA attributes
-            if hasattr(module, 'lora_A_agg'):
+            if hasattr(module, 'lora_A') and hasattr(module, 'lora_B'):
                 count += 1
                 print(f"Plotting LoRA: {name}")
                 
-                if args.mode == 'aggressive':
-                    A = module.lora_A_agg.detach().numpy()
-                    B = module.lora_B_agg.detach().numpy()
-                else:
-                    A = module.lora_A_cons.detach().numpy()
-                    B = module.lora_B_cons.detach().numpy()
+                A = module.lora_A.detach().numpy()
+                B = module.lora_B.detach().numpy()
                 
                 delta_W = (B @ A) * module.scaling
                 plot_heatmap(A, f"LoRA A (Rank Projection) - {name}", os.path.join(output_dir, f"lora_{layer_sanitized}_A.png"))
@@ -136,7 +128,6 @@ def main():
 
         # B. Standard Weight Visualization
         if args.type in ['standard', 'both']:
-            # Handle both raw nn.Linear and the base_layer inside LoRALinear
             target_linear = None
             if isinstance(module, nn.Linear):
                 target_linear = module

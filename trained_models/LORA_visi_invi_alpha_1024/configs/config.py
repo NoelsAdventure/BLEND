@@ -34,11 +34,11 @@ class Config(object):
     
     policy.aci_input = True
     policy.constant_std = True
-    policy.constrain_cost = True
+    policy.constrain_cost = False
     
     env.val_size = 100
     env.test_size = 500
-    note = f"ours_gst_visible_toinvisible"
+    note = f"LoraB_visi_invi"
     #################### unfrequently tuned ######################## 
     aggressiveness_factor = 0.0 # unused for now
     reward.intrusion_start_dist = 0.50 # unused
@@ -107,7 +107,7 @@ class Config(object):
 
     # a human may change its goal before it reaches its old goal
     # if randomize human behaviors, set to True, else set to False
-    humans.random_goal_changing = True
+    humans.random_goal_changing = False
     humans.goal_change_chance = 0.5
 
     # a human may change its goal after it reaches its old goal

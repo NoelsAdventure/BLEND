@@ -1,6 +1,7 @@
 import torch.nn.functional as F
 
 from .srnn_model import *
+from .network_utils import LoRALinear
 
 class SpatialEdgeSelfAttn(nn.Module):
     """
@@ -87,7 +88,7 @@ class EdgeAttention_M(nn.Module):
     '''
     Class for the robot-human attention module
     '''
-    def __init__(self, args):
+    def __init__(self, args, config):
         '''
         Initializer function
         params:
@@ -97,6 +98,7 @@ class EdgeAttention_M(nn.Module):
         super(EdgeAttention_M, self).__init__()
 
         self.args = args
+        self.config = config
 
         # Store required sizes
         self.human_human_edge_rnn_size = args.human_human_edge_rnn_size
@@ -109,10 +111,17 @@ class EdgeAttention_M(nn.Module):
         self.temporal_edge_layer=nn.ModuleList()
         self.spatial_edge_layer=nn.ModuleList()
 
-        self.temporal_edge_layer.append(nn.Linear(self.human_human_edge_rnn_size, self.attention_size))
+        temporal_layer = nn.Linear(self.human_human_edge_rnn_size, self.attention_size)
+        spatial_layer = nn.Linear(self.human_human_edge_rnn_size, self.attention_size)
+
+        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
+            temporal_layer = LoRALinear(temporal_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            spatial_layer = LoRALinear(spatial_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+
+        self.temporal_edge_layer.append(temporal_layer)
 
         # Linear layer to embed spatial edgeRNN hidden states
-        self.spatial_edge_layer.append(nn.Linear(self.human_human_edge_rnn_size, self.attention_size))
+        self.spatial_edge_layer.append(spatial_layer)
 
 
 
@@ -308,7 +317,7 @@ class selfAttn_merge_SRNN(nn.Module):
         self.humanNodeRNN = EndRNN(args)
 
         # Initialize attention module
-        self.attn = EdgeAttention_M(args)
+        self.attn = EdgeAttention_M(args, self.config)
 
 
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
@@ -316,13 +325,25 @@ class selfAttn_merge_SRNN(nn.Module):
 
         num_inputs = hidden_size = self.output_size
 
+        actor_l1 = init_(nn.Linear(num_inputs, hidden_size))
+        actor_l2 = init_(nn.Linear(hidden_size, hidden_size))
+
+        critic_l1 = init_(nn.Linear(num_inputs, hidden_size))
+        critic_l2 = init_(nn.Linear(hidden_size, hidden_size))
+
+        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
+            actor_l1 = LoRALinear(actor_l1, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            actor_l2 = LoRALinear(actor_l2, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            critic_l1 = LoRALinear(critic_l1, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            critic_l2 = LoRALinear(critic_l2, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+
         self.actor = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
+            actor_l1, nn.Tanh(),
+            actor_l2, nn.Tanh())
 
         self.critic = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
+            critic_l1, nn.Tanh(),
+            critic_l2, nn.Tanh())
 
 
         self.critic_linear = init_(nn.Linear(hidden_size, 1))
@@ -332,7 +353,10 @@ class selfAttn_merge_SRNN(nn.Module):
 
         if self.args.use_self_attn:
             self.spatial_attn = SpatialEdgeSelfAttn(args, self.config)
-            self.spatial_linear = nn.Sequential(init_(nn.Linear(512, 256)), nn.ReLU())
+            spatial_linear_layer = init_(nn.Linear(512, 256))
+            if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
+                spatial_linear_layer = LoRALinear(spatial_linear_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            self.spatial_linear = nn.Sequential(spatial_linear_layer, nn.ReLU())
         else:
             raise NotImplementedError
         self.temporal_edges = [0]
@@ -344,8 +368,6 @@ class selfAttn_merge_SRNN(nn.Module):
             self.dummy_human_mask = Variable(torch.Tensor([dummy_human_mask]).cpu())
         else:
             self.dummy_human_mask = Variable(torch.Tensor([dummy_human_mask]).cuda())
-
-
 
     def forward(self, inputs, rnn_hxs, masks, infer=False):
         if infer:

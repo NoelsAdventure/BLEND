@@ -127,7 +127,7 @@ class Config(object):
     # robot config
     robot = BaseConfig()
     # whether robot is visible to humans (whether humans respond to the robot's motion)
-    robot.visible = True # tag: 05/02/2024
+    robot.visible = False # tag: 05/02/2024
     # For baseline: srnn; our method: selfAttn_merge_srnn
     robot.policy = 'selfAttn_merge_srnn'
     robot.radius = 0.3

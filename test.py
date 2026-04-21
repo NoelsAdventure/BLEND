@@ -32,6 +32,9 @@ def main():
     parser.add_argument('--render_traj', default=False, action='store_true')
     # whether to save slide show of episodes
     parser.add_argument('--save_slides', default=False, action='store_true')
+    # dynamic LoRA scale for testing gradual changes
+    parser.add_argument('--lora_scale', type=float, default=1.0)
+    parser.add_argument('--exp_id', type=str, default=None)
     
     # Use parse_known_args so test.py only takes what it needs
     test_args, unknown = parser.parse_known_args()
@@ -157,8 +160,53 @@ def main():
             env_config,
             base_kwargs=algo_args,
             base=config.robot.policy)
-        actor_critic.load_state_dict(torch.load(load_path, map_location=device))
+        
+        state_dict = torch.load(load_path, map_location=device)
+        
+        if config.robot.policy == 'networks':
+            # Map standard keys to LoRA and rename old module names to new ones
+            new_state_dict = {}
+            model_state_dict = actor_critic.state_dict()
+            
+            # Translation map for old variable names to new ones
+            name_translation = {
+                "humanNodeRNN": "node_rnn",
+                "attn": "hr_attn",
+                "spatial_attn": "hh_attn",
+                "spatial_linear": "hh_out_proj",
+                "temporal_edge_layer": "robot_feature_proj",
+                "spatial_edge_layer": "human_feature_proj"
+            }
+
+            for key, value in state_dict.items():
+                translated_key = key
+                # 1. Translate old module names to new ones recursively
+                for old_name, new_name in name_translation.items():
+                    if f".{old_name}." in translated_key:
+                        translated_key = translated_key.replace(f".{old_name}.", f".{new_name}.")
+                    elif translated_key.startswith(f"{old_name}."):
+                        translated_key = translated_key.replace(f"{old_name}.", f"{new_name}.", 1)
+
+                # 2. Map standard Linear to LoRA base_layer if LoRA is enabled
+                if hasattr(env_config, 'lora') and env_config.lora.use_lora:
+                    base_layer_key = translated_key.replace(".weight", ".base_layer.weight").replace(".bias", ".base_layer.bias")
+                    if base_layer_key in model_state_dict:
+                        new_state_dict[base_layer_key] = value
+                        continue
+                
+                new_state_dict[translated_key] = value
+            actor_critic.load_state_dict(new_state_dict, strict=False)
+        else:
+            actor_critic.load_state_dict(state_dict)
+
         actor_critic.base.nenv = 1
+        
+        # Apply dynamic LoRA scale
+        from rl.networks.network_utils import LoRALinear
+        for module in actor_critic.modules():
+            if isinstance(module, LoRALinear):
+                module.dynamic_scale = test_args.lora_scale
+                logging.info(f"Set dynamic_scale for LoRALinear module to {test_args.lora_scale}")
 
         # allow the usage of multiple GPUs to increase the number of examples processed simultaneously
         nn.DataParallel(actor_critic).to(device)
@@ -167,7 +215,7 @@ def main():
 
     test_size = 250#config.env.test_size
     # call the evaluation function
-    evaluate(actor_critic, envs, 1, device, test_size, logging, config, algo_args, model_dir_temp, test_args.visualize)
+    evaluate(actor_critic, envs, 1, device, test_size, logging, config, algo_args, model_dir_temp, test_args.visualize, test_args)
 
 
 if __name__ == '__main__':

@@ -30,6 +30,8 @@ class LoRALinear(nn.Module):
         nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B)
         
+        self.dynamic_scale = 1.0
+
         # Freeze base layer
         for param in self.base_layer.parameters():
             param.requires_grad = False
@@ -37,8 +39,8 @@ class LoRALinear(nn.Module):
     def forward(self, x):
         result = self.base_layer(x)
         
-        # Add LoRA branch
-        lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling
+        # Add LoRA branch with dynamic scaling
+        lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
         return result + lora_out
 
 # Get a render function

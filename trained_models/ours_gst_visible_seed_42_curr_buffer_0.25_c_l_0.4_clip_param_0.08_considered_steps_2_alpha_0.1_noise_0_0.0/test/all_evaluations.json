@@ -1,0 +1,2275 @@
+{
+    "exp_20260421_170043_4a25a4d1": {
+        "timestamp": "2026-04-21 17:00:43",
+        "config": {
+            "robot_visible": false,
+            "human_random": true,
+            "use_lora": false,
+            "lora_alpha": 8,
+            "lora_rank": 4,
+            "lora_scale": 1.0,
+            "test_model": "05207.pt",
+            "model_dir": "trained_models/ours_gst_visible_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0"
+        },
+        "summary": {
+            "success_rate": 0.548,
+            "collision_rate": 0.452,
+            "timeout_rate": 0.0,
+            "avg_nav_time": 11.516423357664234,
+            "avg_path_length": 16.567096710205078,
+            "avg_uncertainty": 0.14278700484870524
+        },
+        "episodes": [
+            {
+                "episode": 0,
+                "result": "Collision",
+                "reward": -10.418207168579102,
+                "steps": 29,
+                "time": 7.0,
+                "path_length": 14.788344383239746,
+                "avg_uncertainty": 0.16538999999999995
+            },
+            {
+                "episode": 1,
+                "result": "Success",
+                "reward": 30.08974266052246,
+                "steps": 53,
+                "time": 13.0,
+                "path_length": 21.658716201782227,
+                "avg_uncertainty": 0.16927407407407402
+            },
+            {
+                "episode": 2,
+                "result": "Success",
+                "reward": 28.37356185913086,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 18.86311912536621,
+                "avg_uncertainty": 0.07820487804878046
+            },
+            {
+                "episode": 3,
+                "result": "Collision",
+                "reward": -3.8611316680908203,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 15.228826522827148,
+                "avg_uncertainty": 0.14088874999999995
+            },
+            {
+                "episode": 4,
+                "result": "Success",
+                "reward": 29.933536529541016,
+                "steps": 46,
+                "time": 11.25,
+                "path_length": 20.54386329650879,
+                "avg_uncertainty": 0.09064042553191487
+            },
+            {
+                "episode": 5,
+                "result": "Success",
+                "reward": 31.552186965942383,
+                "steps": 48,
+                "time": 11.75,
+                "path_length": 12.411029815673828,
+                "avg_uncertainty": 0.17287959183673463
+            },
+            {
+                "episode": 6,
+                "result": "Success",
+                "reward": 26.751285552978516,
+                "steps": 36,
+                "time": 8.75,
+                "path_length": 15.364524841308594,
+                "avg_uncertainty": 0.12400675675675672
+            },
+            {
+                "episode": 7,
+                "result": "Success",
+                "reward": 29.578853607177734,
+                "steps": 68,
+                "time": 16.75,
+                "path_length": 19.543853759765625,
+                "avg_uncertainty": 0.12428623188405791
+            },
+            {
+                "episode": 8,
+                "result": "Collision",
+                "reward": -10.180107116699219,
+                "steps": 27,
+                "time": 6.5,
+                "path_length": 11.887468338012695,
+                "avg_uncertainty": 0.15420535714285713
+            },
+            {
+                "episode": 9,
+                "result": "Collision",
+                "reward": -4.431118011474609,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 18.653236389160156,
+                "avg_uncertainty": 0.16952624999999996
+            },
+            {
+                "episode": 10,
+                "result": "Success",
+                "reward": 28.573869705200195,
+                "steps": 61,
+                "time": 15.0,
+                "path_length": 23.84236717224121,
+                "avg_uncertainty": 0.12272983870967738
+            },
+            {
+                "episode": 11,
+                "result": "Collision",
+                "reward": -9.915279388427734,
+                "steps": 23,
+                "time": 5.5,
+                "path_length": 11.803216934204102,
+                "avg_uncertainty": 0.10254166666666664
+            },
+            {
+                "episode": 12,
+                "result": "Success",
+                "reward": 26.28317642211914,
+                "steps": 36,
+                "time": 8.75,
+                "path_length": 16.83540916442871,
+                "avg_uncertainty": 0.11927162162162158
+            },
+            {
+                "episode": 13,
+                "result": "Collision",
+                "reward": -4.439678192138672,
+                "steps": 34,
+                "time": 8.25,
+                "path_length": 16.624094009399414,
+                "avg_uncertainty": 0.17131428571428567
+            },
+            {
+                "episode": 14,
+                "result": "Collision",
+                "reward": -7.357867240905762,
+                "steps": 31,
+                "time": 7.5,
+                "path_length": 11.099382400512695,
+                "avg_uncertainty": 0.12119374999999999
+            },
+            {
+                "episode": 15,
+                "result": "Collision",
+                "reward": -10.648670196533203,
+                "steps": 24,
+                "time": 5.75,
+                "path_length": 7.321526050567627,
+                "avg_uncertainty": 0.115152
+            },
+            {
+                "episode": 16,
+                "result": "Success",
+                "reward": 29.302764892578125,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 11.593524932861328,
+                "avg_uncertainty": 0.12113604651162789
+            },
+            {
+                "episode": 17,
+                "result": "Success",
+                "reward": 33.33521270751953,
+                "steps": 54,
+                "time": 13.25,
+                "path_length": 24.55417251586914,
+                "avg_uncertainty": 0.15183818181818176
+            },
+            {
+                "episode": 18,
+                "result": "Success",
+                "reward": 26.958736419677734,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 18.281461715698242,
+                "avg_uncertainty": 0.15215263157894734
+            },
+            {
+                "episode": 19,
+                "result": "Collision",
+                "reward": -13.16021728515625,
+                "steps": 23,
+                "time": 5.5,
+                "path_length": 11.577058792114258,
+                "avg_uncertainty": 0.15202916666666663
+            },
+            {
+                "episode": 20,
+                "result": "Success",
+                "reward": 27.18470001220703,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 17.01288604736328,
+                "avg_uncertainty": 0.16323571428571423
+            },
+            {
+                "episode": 21,
+                "result": "Collision",
+                "reward": -1.9995040893554688,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 16.452320098876953,
+                "avg_uncertainty": 0.15100813953488368
+            },
+            {
+                "episode": 22,
+                "result": "Collision",
+                "reward": -9.839188575744629,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 13.927655220031738,
+                "avg_uncertainty": 0.14171379310344828
+            },
+            {
+                "episode": 23,
+                "result": "Success",
+                "reward": 27.29521369934082,
+                "steps": 46,
+                "time": 11.25,
+                "path_length": 21.053281784057617,
+                "avg_uncertainty": 0.1856287234042553
+            },
+            {
+                "episode": 24,
+                "result": "Collision",
+                "reward": -10.934224128723145,
+                "steps": 31,
+                "time": 7.5,
+                "path_length": 12.432394981384277,
+                "avg_uncertainty": 0.14336249999999995
+            },
+            {
+                "episode": 25,
+                "result": "Collision",
+                "reward": -9.967252731323242,
+                "steps": 29,
+                "time": 7.0,
+                "path_length": 17.94922637939453,
+                "avg_uncertainty": 0.14204333333333333
+            },
+            {
+                "episode": 26,
+                "result": "Collision",
+                "reward": -12.104425430297852,
+                "steps": 23,
+                "time": 5.5,
+                "path_length": 8.856155395507812,
+                "avg_uncertainty": 0.16140416666666665
+            },
+            {
+                "episode": 27,
+                "result": "Collision",
+                "reward": -10.588562965393066,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 13.04092025756836,
+                "avg_uncertainty": 0.14203793103448276
+            },
+            {
+                "episode": 28,
+                "result": "Collision",
+                "reward": -4.548859596252441,
+                "steps": 38,
+                "time": 9.25,
+                "path_length": 17.19661521911621,
+                "avg_uncertainty": 0.15897820512820507
+            },
+            {
+                "episode": 29,
+                "result": "Success",
+                "reward": 33.648277282714844,
+                "steps": 51,
+                "time": 12.5,
+                "path_length": 22.002548217773438,
+                "avg_uncertainty": 0.11211538461538455
+            },
+            {
+                "episode": 30,
+                "result": "Collision",
+                "reward": -6.850299835205078,
+                "steps": 29,
+                "time": 7.0,
+                "path_length": 15.165575981140137,
+                "avg_uncertainty": 0.1403583333333333
+            },
+            {
+                "episode": 31,
+                "result": "Collision",
+                "reward": -9.31424617767334,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 9.35936164855957,
+                "avg_uncertainty": 0.11621551724137931
+            },
+            {
+                "episode": 32,
+                "result": "Collision",
+                "reward": -6.249734878540039,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 13.303850173950195,
+                "avg_uncertainty": 0.15502631578947362
+            },
+            {
+                "episode": 33,
+                "result": "Collision",
+                "reward": -6.245208740234375,
+                "steps": 33,
+                "time": 8.0,
+                "path_length": 14.60365104675293,
+                "avg_uncertainty": 0.12885147058823532
+            },
+            {
+                "episode": 34,
+                "result": "Success",
+                "reward": 29.923202514648438,
+                "steps": 47,
+                "time": 11.5,
+                "path_length": 17.75981903076172,
+                "avg_uncertainty": 0.16198541666666663
+            },
+            {
+                "episode": 35,
+                "result": "Success",
+                "reward": 26.56968879699707,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 17.61371612548828,
+                "avg_uncertainty": 0.12062555555555553
+            },
+            {
+                "episode": 36,
+                "result": "Collision",
+                "reward": -8.547368049621582,
+                "steps": 36,
+                "time": 8.75,
+                "path_length": 12.858501434326172,
+                "avg_uncertainty": 0.16401486486486486
+            },
+            {
+                "episode": 37,
+                "result": "Success",
+                "reward": 30.378055572509766,
+                "steps": 49,
+                "time": 12.0,
+                "path_length": 14.375548362731934,
+                "avg_uncertainty": 0.12887399999999996
+            },
+            {
+                "episode": 38,
+                "result": "Success",
+                "reward": 25.417747497558594,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 17.12639045715332,
+                "avg_uncertainty": 0.16580681818181814
+            },
+            {
+                "episode": 39,
+                "result": "Collision",
+                "reward": -13.463077545166016,
+                "steps": 29,
+                "time": 7.0,
+                "path_length": 13.8070707321167,
+                "avg_uncertainty": 0.15019166666666667
+            },
+            {
+                "episode": 40,
+                "result": "Collision",
+                "reward": -8.553644180297852,
+                "steps": 32,
+                "time": 7.75,
+                "path_length": 13.424142837524414,
+                "avg_uncertainty": 0.14725454545454542
+            },
+            {
+                "episode": 41,
+                "result": "Collision",
+                "reward": -9.063491821289062,
+                "steps": 27,
+                "time": 6.5,
+                "path_length": 13.190919876098633,
+                "avg_uncertainty": 0.18542678571428575
+            },
+            {
+                "episode": 42,
+                "result": "Success",
+                "reward": 26.368316650390625,
+                "steps": 35,
+                "time": 8.5,
+                "path_length": 18.00595474243164,
+                "avg_uncertainty": 0.10560138888888887
+            },
+            {
+                "episode": 43,
+                "result": "Collision",
+                "reward": -9.514748573303223,
+                "steps": 33,
+                "time": 8.0,
+                "path_length": 14.766801834106445,
+                "avg_uncertainty": 0.16620735294117644
+            },
+            {
+                "episode": 44,
+                "result": "Success",
+                "reward": 26.16851234436035,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 20.867053985595703,
+                "avg_uncertainty": 0.16843780487804874
+            },
+            {
+                "episode": 45,
+                "result": "Success",
+                "reward": 28.140762329101562,
+                "steps": 46,
+                "time": 11.25,
+                "path_length": 15.53968334197998,
+                "avg_uncertainty": 0.1360691489361702
+            },
+            {
+                "episode": 46,
+                "result": "Success",
+                "reward": 31.115049362182617,
+                "steps": 66,
+                "time": 16.25,
+                "path_length": 25.575393676757812,
+                "avg_uncertainty": 0.14312835820895514
+            },
+            {
+                "episode": 47,
+                "result": "Collision",
+                "reward": -10.699790000915527,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 13.327288627624512,
+                "avg_uncertainty": 0.14083522727272724
+            },
+            {
+                "episode": 48,
+                "result": "Collision",
+                "reward": -5.814716339111328,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 16.54926872253418,
+                "avg_uncertainty": 0.16480113636363633
+            },
+            {
+                "episode": 49,
+                "result": "Collision",
+                "reward": -6.854912757873535,
+                "steps": 34,
+                "time": 8.25,
+                "path_length": 13.721118927001953,
+                "avg_uncertainty": 0.15127142857142856
+            },
+            {
+                "episode": 50,
+                "result": "Success",
+                "reward": 31.05074691772461,
+                "steps": 74,
+                "time": 18.25,
+                "path_length": 27.660743713378906,
+                "avg_uncertainty": 0.17141533333333325
+            },
+            {
+                "episode": 51,
+                "result": "Collision",
+                "reward": -6.53085994720459,
+                "steps": 33,
+                "time": 8.0,
+                "path_length": 17.51584243774414,
+                "avg_uncertainty": 0.12524558823529408
+            },
+            {
+                "episode": 52,
+                "result": "Success",
+                "reward": 37.20545959472656,
+                "steps": 63,
+                "time": 15.5,
+                "path_length": 24.084415435791016,
+                "avg_uncertainty": 0.13970390624999995
+            },
+            {
+                "episode": 53,
+                "result": "Success",
+                "reward": 26.88717269897461,
+                "steps": 45,
+                "time": 11.0,
+                "path_length": 20.77399444580078,
+                "avg_uncertainty": 0.19117391304347822
+            },
+            {
+                "episode": 54,
+                "result": "Success",
+                "reward": 26.646799087524414,
+                "steps": 93,
+                "time": 23.0,
+                "path_length": 30.78676986694336,
+                "avg_uncertainty": 0.14032021276595735
+            },
+            {
+                "episode": 55,
+                "result": "Success",
+                "reward": 26.491979598999023,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 21.845985412597656,
+                "avg_uncertainty": 0.14562763157894734
+            },
+            {
+                "episode": 56,
+                "result": "Collision",
+                "reward": -7.844355583190918,
+                "steps": 32,
+                "time": 7.75,
+                "path_length": 12.233619689941406,
+                "avg_uncertainty": 0.14553181818181815
+            },
+            {
+                "episode": 57,
+                "result": "Success",
+                "reward": 28.805078506469727,
+                "steps": 45,
+                "time": 11.0,
+                "path_length": 15.924483299255371,
+                "avg_uncertainty": 0.1230847826086956
+            },
+            {
+                "episode": 58,
+                "result": "Success",
+                "reward": 28.794790267944336,
+                "steps": 48,
+                "time": 11.75,
+                "path_length": 18.04781150817871,
+                "avg_uncertainty": 0.12643163265306118
+            },
+            {
+                "episode": 59,
+                "result": "Success",
+                "reward": 26.144115447998047,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 12.60557746887207,
+                "avg_uncertainty": 0.10950476190476185
+            },
+            {
+                "episode": 60,
+                "result": "Success",
+                "reward": 29.925508499145508,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 16.746437072753906,
+                "avg_uncertainty": 0.1575544444444444
+            },
+            {
+                "episode": 61,
+                "result": "Success",
+                "reward": 25.479576110839844,
+                "steps": 36,
+                "time": 8.75,
+                "path_length": 14.044437408447266,
+                "avg_uncertainty": 0.1214513513513513
+            },
+            {
+                "episode": 62,
+                "result": "Success",
+                "reward": 25.953655242919922,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 24.68450164794922,
+                "avg_uncertainty": 0.1320337209302325
+            },
+            {
+                "episode": 63,
+                "result": "Collision",
+                "reward": -7.710915565490723,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 16.524738311767578,
+                "avg_uncertainty": 0.17976184210526314
+            },
+            {
+                "episode": 64,
+                "result": "Collision",
+                "reward": -12.326615333557129,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 12.379966735839844,
+                "avg_uncertainty": 0.1617465517241379
+            },
+            {
+                "episode": 65,
+                "result": "Collision",
+                "reward": -5.411789894104004,
+                "steps": 35,
+                "time": 8.5,
+                "path_length": 11.981061935424805,
+                "avg_uncertainty": 0.15621527777777774
+            },
+            {
+                "episode": 66,
+                "result": "Collision",
+                "reward": -12.540231704711914,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 12.352169036865234,
+                "avg_uncertainty": 0.1277120689655172
+            },
+            {
+                "episode": 67,
+                "result": "Collision",
+                "reward": -5.514348030090332,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 13.137505531311035,
+                "avg_uncertainty": 0.16387444444444438
+            },
+            {
+                "episode": 68,
+                "result": "Collision",
+                "reward": -11.523701667785645,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 12.0906982421875,
+                "avg_uncertainty": 0.17068965517241377
+            },
+            {
+                "episode": 69,
+                "result": "Success",
+                "reward": 26.187570571899414,
+                "steps": 38,
+                "time": 9.25,
+                "path_length": 10.416337013244629,
+                "avg_uncertainty": 0.16685384615384616
+            },
+            {
+                "episode": 70,
+                "result": "Collision",
+                "reward": -9.575413703918457,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 12.334155082702637,
+                "avg_uncertainty": 0.14310862068965519
+            },
+            {
+                "episode": 71,
+                "result": "Success",
+                "reward": 25.928117752075195,
+                "steps": 34,
+                "time": 8.25,
+                "path_length": 16.662220001220703,
+                "avg_uncertainty": 0.15822571428571428
+            },
+            {
+                "episode": 72,
+                "result": "Success",
+                "reward": 31.72647476196289,
+                "steps": 54,
+                "time": 13.25,
+                "path_length": 26.44554901123047,
+                "avg_uncertainty": 0.12413636363636361
+            },
+            {
+                "episode": 73,
+                "result": "Success",
+                "reward": 27.757495880126953,
+                "steps": 46,
+                "time": 11.25,
+                "path_length": 23.677383422851562,
+                "avg_uncertainty": 0.12568936170212763
+            },
+            {
+                "episode": 74,
+                "result": "Success",
+                "reward": 27.909425735473633,
+                "steps": 46,
+                "time": 11.25,
+                "path_length": 18.62472152709961,
+                "avg_uncertainty": 0.14870638297872335
+            },
+            {
+                "episode": 75,
+                "result": "Success",
+                "reward": 26.451759338378906,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 13.39067554473877,
+                "avg_uncertainty": 0.14955263157894733
+            },
+            {
+                "episode": 76,
+                "result": "Success",
+                "reward": 27.03550148010254,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 18.583250045776367,
+                "avg_uncertainty": 0.16061136363636355
+            },
+            {
+                "episode": 77,
+                "result": "Collision",
+                "reward": -8.078916549682617,
+                "steps": 34,
+                "time": 8.25,
+                "path_length": 12.941375732421875,
+                "avg_uncertainty": 0.16204857142857138
+            },
+            {
+                "episode": 78,
+                "result": "Success",
+                "reward": 27.77266502380371,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 17.952594757080078,
+                "avg_uncertainty": 0.15772374999999994
+            },
+            {
+                "episode": 79,
+                "result": "Collision",
+                "reward": -7.769102096557617,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 13.880636215209961,
+                "avg_uncertainty": 0.1449290322580645
+            },
+            {
+                "episode": 80,
+                "result": "Collision",
+                "reward": -12.15233039855957,
+                "steps": 21,
+                "time": 5.0,
+                "path_length": 13.100099563598633,
+                "avg_uncertainty": 0.10913863636363635
+            },
+            {
+                "episode": 81,
+                "result": "Success",
+                "reward": 30.999099731445312,
+                "steps": 45,
+                "time": 11.0,
+                "path_length": 22.380191802978516,
+                "avg_uncertainty": 0.14169347826086953
+            },
+            {
+                "episode": 82,
+                "result": "Collision",
+                "reward": -7.719298362731934,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 14.891172409057617,
+                "avg_uncertainty": 0.18879047619047612
+            },
+            {
+                "episode": 83,
+                "result": "Collision",
+                "reward": -4.943060874938965,
+                "steps": 33,
+                "time": 8.0,
+                "path_length": 15.699399948120117,
+                "avg_uncertainty": 0.19029264705882354
+            },
+            {
+                "episode": 84,
+                "result": "Collision",
+                "reward": -7.555856704711914,
+                "steps": 32,
+                "time": 7.75,
+                "path_length": 16.146455764770508,
+                "avg_uncertainty": 0.12459242424242423
+            },
+            {
+                "episode": 85,
+                "result": "Success",
+                "reward": 31.265382766723633,
+                "steps": 51,
+                "time": 12.5,
+                "path_length": 15.498173713684082,
+                "avg_uncertainty": 0.13134711538461535
+            },
+            {
+                "episode": 86,
+                "result": "Success",
+                "reward": 25.637414932250977,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 18.52215576171875,
+                "avg_uncertainty": 0.17446499999999993
+            },
+            {
+                "episode": 87,
+                "result": "Collision",
+                "reward": -12.811152458190918,
+                "steps": 19,
+                "time": 4.5,
+                "path_length": 7.584160804748535,
+                "avg_uncertainty": 0.08373
+            },
+            {
+                "episode": 88,
+                "result": "Success",
+                "reward": 30.3892822265625,
+                "steps": 45,
+                "time": 11.0,
+                "path_length": 15.674325942993164,
+                "avg_uncertainty": 0.15725434782608688
+            },
+            {
+                "episode": 89,
+                "result": "Collision",
+                "reward": -7.924131393432617,
+                "steps": 32,
+                "time": 7.75,
+                "path_length": 11.078728675842285,
+                "avg_uncertainty": 0.1444560606060606
+            },
+            {
+                "episode": 90,
+                "result": "Collision",
+                "reward": -9.178424835205078,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 10.121726989746094,
+                "avg_uncertainty": 0.13399354838709673
+            },
+            {
+                "episode": 91,
+                "result": "Success",
+                "reward": 26.86473846435547,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 19.99433135986328,
+                "avg_uncertainty": 0.12129880952380948
+            },
+            {
+                "episode": 92,
+                "result": "Success",
+                "reward": 28.667381286621094,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 22.985260009765625,
+                "avg_uncertainty": 0.10103666666666664
+            },
+            {
+                "episode": 93,
+                "result": "Success",
+                "reward": 30.244441986083984,
+                "steps": 54,
+                "time": 13.25,
+                "path_length": 25.816593170166016,
+                "avg_uncertainty": 0.14664090909090904
+            },
+            {
+                "episode": 94,
+                "result": "Collision",
+                "reward": -7.073451042175293,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 8.150874137878418,
+                "avg_uncertainty": 0.14362096774193547
+            },
+            {
+                "episode": 95,
+                "result": "Success",
+                "reward": 25.620288848876953,
+                "steps": 54,
+                "time": 13.25,
+                "path_length": 18.529136657714844,
+                "avg_uncertainty": 0.17327727272727264
+            },
+            {
+                "episode": 96,
+                "result": "Collision",
+                "reward": -9.497570991516113,
+                "steps": 52,
+                "time": 12.75,
+                "path_length": 18.143356323242188,
+                "avg_uncertainty": 0.17516037735849047
+            },
+            {
+                "episode": 97,
+                "result": "Success",
+                "reward": 25.62276840209961,
+                "steps": 35,
+                "time": 8.5,
+                "path_length": 19.85486602783203,
+                "avg_uncertainty": 0.14712777777777775
+            },
+            {
+                "episode": 98,
+                "result": "Collision",
+                "reward": -7.564785957336426,
+                "steps": 32,
+                "time": 7.75,
+                "path_length": 13.24496841430664,
+                "avg_uncertainty": 0.17965757575757574
+            },
+            {
+                "episode": 99,
+                "result": "Collision",
+                "reward": -9.319579124450684,
+                "steps": 26,
+                "time": 6.25,
+                "path_length": 14.263931274414062,
+                "avg_uncertainty": 0.11930555555555553
+            },
+            {
+                "episode": 100,
+                "result": "Collision",
+                "reward": -9.634198188781738,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 13.039989471435547,
+                "avg_uncertainty": 0.1444274193548387
+            },
+            {
+                "episode": 101,
+                "result": "Collision",
+                "reward": -4.689604759216309,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 15.509035110473633,
+                "avg_uncertainty": 0.16534999999999994
+            },
+            {
+                "episode": 102,
+                "result": "Success",
+                "reward": 28.12347984313965,
+                "steps": 50,
+                "time": 12.25,
+                "path_length": 17.152755737304688,
+                "avg_uncertainty": 0.14027254901960778
+            },
+            {
+                "episode": 103,
+                "result": "Success",
+                "reward": 29.748991012573242,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 11.249475479125977,
+                "avg_uncertainty": 0.11435999999999996
+            },
+            {
+                "episode": 104,
+                "result": "Success",
+                "reward": 32.9246826171875,
+                "steps": 60,
+                "time": 14.75,
+                "path_length": 23.097370147705078,
+                "avg_uncertainty": 0.184505737704918
+            },
+            {
+                "episode": 105,
+                "result": "Collision",
+                "reward": -19.50827980041504,
+                "steps": 3,
+                "time": 0.5,
+                "path_length": 6.640782833099365,
+                "avg_uncertainty": 0.1078375
+            },
+            {
+                "episode": 106,
+                "result": "Collision",
+                "reward": -15.060060501098633,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 16.76759910583496,
+                "avg_uncertainty": 0.09105806451612902
+            },
+            {
+                "episode": 107,
+                "result": "Collision",
+                "reward": -12.017190933227539,
+                "steps": 21,
+                "time": 5.0,
+                "path_length": 10.023324966430664,
+                "avg_uncertainty": 0.110025
+            },
+            {
+                "episode": 108,
+                "result": "Collision",
+                "reward": -10.634881973266602,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 14.301660537719727,
+                "avg_uncertainty": 0.16314032258064512
+            },
+            {
+                "episode": 109,
+                "result": "Success",
+                "reward": 26.669153213500977,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 19.947410583496094,
+                "avg_uncertainty": 0.18245119047619043
+            },
+            {
+                "episode": 110,
+                "result": "Collision",
+                "reward": -8.853741645812988,
+                "steps": 27,
+                "time": 6.5,
+                "path_length": 12.278772354125977,
+                "avg_uncertainty": 0.10445714285714285
+            },
+            {
+                "episode": 111,
+                "result": "Collision",
+                "reward": -11.065031051635742,
+                "steps": 24,
+                "time": 5.75,
+                "path_length": 12.41779899597168,
+                "avg_uncertainty": 0.12806199999999998
+            },
+            {
+                "episode": 112,
+                "result": "Collision",
+                "reward": -5.7439775466918945,
+                "steps": 33,
+                "time": 8.0,
+                "path_length": 12.44602108001709,
+                "avg_uncertainty": 0.19210882352941172
+            },
+            {
+                "episode": 113,
+                "result": "Collision",
+                "reward": -9.544351577758789,
+                "steps": 29,
+                "time": 7.0,
+                "path_length": 12.928506851196289,
+                "avg_uncertainty": 0.18440166666666666
+            },
+            {
+                "episode": 114,
+                "result": "Collision",
+                "reward": -10.866476058959961,
+                "steps": 36,
+                "time": 8.75,
+                "path_length": 14.113391876220703,
+                "avg_uncertainty": 0.1617121621621621
+            },
+            {
+                "episode": 115,
+                "result": "Collision",
+                "reward": -4.488548278808594,
+                "steps": 38,
+                "time": 9.25,
+                "path_length": 15.5120210647583,
+                "avg_uncertainty": 0.1600602564102564
+            },
+            {
+                "episode": 116,
+                "result": "Collision",
+                "reward": -13.605430603027344,
+                "steps": 24,
+                "time": 5.75,
+                "path_length": 9.57188606262207,
+                "avg_uncertainty": 0.134296
+            },
+            {
+                "episode": 117,
+                "result": "Collision",
+                "reward": -4.106510162353516,
+                "steps": 35,
+                "time": 8.5,
+                "path_length": 12.056464195251465,
+                "avg_uncertainty": 0.17455138888888883
+            },
+            {
+                "episode": 118,
+                "result": "Success",
+                "reward": 28.343435287475586,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 13.32265567779541,
+                "avg_uncertainty": 0.1613773809523809
+            },
+            {
+                "episode": 119,
+                "result": "Collision",
+                "reward": -8.328044891357422,
+                "steps": 31,
+                "time": 7.5,
+                "path_length": 12.355941772460938,
+                "avg_uncertainty": 0.13492656249999999
+            },
+            {
+                "episode": 120,
+                "result": "Success",
+                "reward": 29.889549255371094,
+                "steps": 52,
+                "time": 12.75,
+                "path_length": 23.592998504638672,
+                "avg_uncertainty": 0.1353113207547169
+            },
+            {
+                "episode": 121,
+                "result": "Success",
+                "reward": 26.604991912841797,
+                "steps": 67,
+                "time": 16.5,
+                "path_length": 26.01251220703125,
+                "avg_uncertainty": 0.15979779411764697
+            },
+            {
+                "episode": 122,
+                "result": "Collision",
+                "reward": -8.885138511657715,
+                "steps": 33,
+                "time": 8.0,
+                "path_length": 13.215662956237793,
+                "avg_uncertainty": 0.19312794117647056
+            },
+            {
+                "episode": 123,
+                "result": "Success",
+                "reward": 28.42801856994629,
+                "steps": 46,
+                "time": 11.25,
+                "path_length": 13.139974594116211,
+                "avg_uncertainty": 0.13485744680851058
+            },
+            {
+                "episode": 124,
+                "result": "Success",
+                "reward": 32.309879302978516,
+                "steps": 68,
+                "time": 16.75,
+                "path_length": 28.241178512573242,
+                "avg_uncertainty": 0.11634130434782605
+            },
+            {
+                "episode": 125,
+                "result": "Success",
+                "reward": 33.72390365600586,
+                "steps": 66,
+                "time": 16.25,
+                "path_length": 27.00259017944336,
+                "avg_uncertainty": 0.1644753731343283
+            },
+            {
+                "episode": 126,
+                "result": "Collision",
+                "reward": -9.057007789611816,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 10.618709564208984,
+                "avg_uncertainty": 0.14434310344827583
+            },
+            {
+                "episode": 127,
+                "result": "Collision",
+                "reward": -10.118768692016602,
+                "steps": 27,
+                "time": 6.5,
+                "path_length": 12.266489028930664,
+                "avg_uncertainty": 0.15949285714285713
+            },
+            {
+                "episode": 128,
+                "result": "Success",
+                "reward": 32.36756134033203,
+                "steps": 54,
+                "time": 13.25,
+                "path_length": 23.24744415283203,
+                "avg_uncertainty": 0.1238527272727272
+            },
+            {
+                "episode": 129,
+                "result": "Collision",
+                "reward": -6.602799415588379,
+                "steps": 32,
+                "time": 7.75,
+                "path_length": 15.333531379699707,
+                "avg_uncertainty": 0.1699742424242424
+            },
+            {
+                "episode": 130,
+                "result": "Success",
+                "reward": 30.767040252685547,
+                "steps": 55,
+                "time": 13.5,
+                "path_length": 23.35978126525879,
+                "avg_uncertainty": 0.12082499999999996
+            },
+            {
+                "episode": 131,
+                "result": "Collision",
+                "reward": -9.123406410217285,
+                "steps": 27,
+                "time": 6.5,
+                "path_length": 8.3587646484375,
+                "avg_uncertainty": 0.16372142857142855
+            },
+            {
+                "episode": 132,
+                "result": "Collision",
+                "reward": -7.117002487182617,
+                "steps": 35,
+                "time": 8.5,
+                "path_length": 13.420727729797363,
+                "avg_uncertainty": 0.17497777777777773
+            },
+            {
+                "episode": 133,
+                "result": "Success",
+                "reward": 26.31092071533203,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 16.23821258544922,
+                "avg_uncertainty": 0.08252763157894735
+            },
+            {
+                "episode": 134,
+                "result": "Collision",
+                "reward": -8.79104232788086,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 12.434097290039062,
+                "avg_uncertainty": 0.1500645161290322
+            },
+            {
+                "episode": 135,
+                "result": "Success",
+                "reward": 27.191987991333008,
+                "steps": 50,
+                "time": 12.25,
+                "path_length": 27.21912956237793,
+                "avg_uncertainty": 0.08860980392156861
+            },
+            {
+                "episode": 136,
+                "result": "Success",
+                "reward": 28.559127807617188,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 13.882915496826172,
+                "avg_uncertainty": 0.13646555555555553
+            },
+            {
+                "episode": 137,
+                "result": "Collision",
+                "reward": -5.6705522537231445,
+                "steps": 35,
+                "time": 8.5,
+                "path_length": 14.095640182495117,
+                "avg_uncertainty": 0.1788708333333333
+            },
+            {
+                "episode": 138,
+                "result": "Success",
+                "reward": 26.85591697692871,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 13.931938171386719,
+                "avg_uncertainty": 0.15143902439024381
+            },
+            {
+                "episode": 139,
+                "result": "Collision",
+                "reward": -5.929530143737793,
+                "steps": 48,
+                "time": 11.75,
+                "path_length": 14.889263153076172,
+                "avg_uncertainty": 0.17429795918367338
+            },
+            {
+                "episode": 140,
+                "result": "Success",
+                "reward": 32.331199645996094,
+                "steps": 55,
+                "time": 13.5,
+                "path_length": 18.64539909362793,
+                "avg_uncertainty": 0.15961071428571422
+            },
+            {
+                "episode": 141,
+                "result": "Collision",
+                "reward": -6.165338516235352,
+                "steps": 34,
+                "time": 8.25,
+                "path_length": 11.336328506469727,
+                "avg_uncertainty": 0.14608
+            },
+            {
+                "episode": 142,
+                "result": "Success",
+                "reward": 30.155527114868164,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 23.870981216430664,
+                "avg_uncertainty": 0.13216888888888884
+            },
+            {
+                "episode": 143,
+                "result": "Success",
+                "reward": 31.091720581054688,
+                "steps": 58,
+                "time": 14.25,
+                "path_length": 18.279794692993164,
+                "avg_uncertainty": 0.16654406779661007
+            },
+            {
+                "episode": 144,
+                "result": "Success",
+                "reward": 26.1400146484375,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 19.161916732788086,
+                "avg_uncertainty": 0.1534853658536585
+            },
+            {
+                "episode": 145,
+                "result": "Success",
+                "reward": 25.638565063476562,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 12.06367015838623,
+                "avg_uncertainty": 0.07967749999999998
+            },
+            {
+                "episode": 146,
+                "result": "Collision",
+                "reward": -9.497023582458496,
+                "steps": 27,
+                "time": 6.5,
+                "path_length": 9.695565223693848,
+                "avg_uncertainty": 0.12075714285714285
+            },
+            {
+                "episode": 147,
+                "result": "Collision",
+                "reward": -8.764257431030273,
+                "steps": 31,
+                "time": 7.5,
+                "path_length": 11.754972457885742,
+                "avg_uncertainty": 0.1334796875
+            },
+            {
+                "episode": 148,
+                "result": "Success",
+                "reward": 28.678030014038086,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 22.720006942749023,
+                "avg_uncertainty": 0.08578780487804877
+            },
+            {
+                "episode": 149,
+                "result": "Success",
+                "reward": 29.902978897094727,
+                "steps": 49,
+                "time": 12.0,
+                "path_length": 17.602569580078125,
+                "avg_uncertainty": 0.14560399999999996
+            },
+            {
+                "episode": 150,
+                "result": "Success",
+                "reward": 26.70091438293457,
+                "steps": 36,
+                "time": 8.75,
+                "path_length": 13.740776062011719,
+                "avg_uncertainty": 0.17855405405405403
+            },
+            {
+                "episode": 151,
+                "result": "Success",
+                "reward": 27.509872436523438,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 13.245070457458496,
+                "avg_uncertainty": 0.1066244186046511
+            },
+            {
+                "episode": 152,
+                "result": "Success",
+                "reward": 29.420635223388672,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 19.84273910522461,
+                "avg_uncertainty": 0.13812954545454545
+            },
+            {
+                "episode": 153,
+                "result": "Success",
+                "reward": 27.719518661499023,
+                "steps": 61,
+                "time": 15.0,
+                "path_length": 16.316696166992188,
+                "avg_uncertainty": 0.13852822580645155
+            },
+            {
+                "episode": 154,
+                "result": "Collision",
+                "reward": -9.983550071716309,
+                "steps": 34,
+                "time": 8.25,
+                "path_length": 13.201745986938477,
+                "avg_uncertainty": 0.1300285714285714
+            },
+            {
+                "episode": 155,
+                "result": "Collision",
+                "reward": -2.7303905487060547,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 15.369047164916992,
+                "avg_uncertainty": 0.16535999999999995
+            },
+            {
+                "episode": 156,
+                "result": "Collision",
+                "reward": -1.8026142120361328,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 11.748537063598633,
+                "avg_uncertainty": 0.1634920454545454
+            },
+            {
+                "episode": 157,
+                "result": "Success",
+                "reward": 27.373310089111328,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 16.184396743774414,
+                "avg_uncertainty": 0.15126184210526308
+            },
+            {
+                "episode": 158,
+                "result": "Success",
+                "reward": 28.19681167602539,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 21.3359375,
+                "avg_uncertainty": 0.1100951219512195
+            },
+            {
+                "episode": 159,
+                "result": "Success",
+                "reward": 25.488861083984375,
+                "steps": 36,
+                "time": 8.75,
+                "path_length": 16.99018096923828,
+                "avg_uncertainty": 0.11882837837837834
+            },
+            {
+                "episode": 160,
+                "result": "Success",
+                "reward": 27.127788543701172,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 16.809720993041992,
+                "avg_uncertainty": 0.16319268292682923
+            },
+            {
+                "episode": 161,
+                "result": "Success",
+                "reward": 28.011133193969727,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 12.12585163116455,
+                "avg_uncertainty": 0.16834390243902433
+            },
+            {
+                "episode": 162,
+                "result": "Collision",
+                "reward": -12.708532333374023,
+                "steps": 27,
+                "time": 6.5,
+                "path_length": 13.855907440185547,
+                "avg_uncertainty": 0.13603928571428572
+            },
+            {
+                "episode": 163,
+                "result": "Success",
+                "reward": 31.299152374267578,
+                "steps": 54,
+                "time": 13.25,
+                "path_length": 23.495853424072266,
+                "avg_uncertainty": 0.18827636363636352
+            },
+            {
+                "episode": 164,
+                "result": "Success",
+                "reward": 25.58840560913086,
+                "steps": 35,
+                "time": 8.5,
+                "path_length": 19.875173568725586,
+                "avg_uncertainty": 0.15841527777777775
+            },
+            {
+                "episode": 165,
+                "result": "Success",
+                "reward": 29.105310440063477,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 19.58127784729004,
+                "avg_uncertainty": 0.11872093023255813
+            },
+            {
+                "episode": 166,
+                "result": "Success",
+                "reward": 35.957275390625,
+                "steps": 57,
+                "time": 14.0,
+                "path_length": 25.08274269104004,
+                "avg_uncertainty": 0.1246568965517241
+            },
+            {
+                "episode": 167,
+                "result": "Success",
+                "reward": 30.642446517944336,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 19.715539932250977,
+                "avg_uncertainty": 0.15639888888888884
+            },
+            {
+                "episode": 168,
+                "result": "Collision",
+                "reward": -14.489978790283203,
+                "steps": 31,
+                "time": 7.5,
+                "path_length": 10.46591854095459,
+                "avg_uncertainty": 0.1604953125
+            },
+            {
+                "episode": 169,
+                "result": "Collision",
+                "reward": -16.581506729125977,
+                "steps": 19,
+                "time": 4.5,
+                "path_length": 12.33924674987793,
+                "avg_uncertainty": 0.10382999999999998
+            },
+            {
+                "episode": 170,
+                "result": "Success",
+                "reward": 28.68608283996582,
+                "steps": 70,
+                "time": 17.25,
+                "path_length": 24.669652938842773,
+                "avg_uncertainty": 0.13805704225352108
+            },
+            {
+                "episode": 171,
+                "result": "Collision",
+                "reward": -0.5677528381347656,
+                "steps": 56,
+                "time": 13.75,
+                "path_length": 20.27635383605957,
+                "avg_uncertainty": 0.16700789473684202
+            },
+            {
+                "episode": 172,
+                "result": "Collision",
+                "reward": -9.042003631591797,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 13.375930786132812,
+                "avg_uncertainty": 0.15125344827586207
+            },
+            {
+                "episode": 173,
+                "result": "Success",
+                "reward": 29.06709098815918,
+                "steps": 46,
+                "time": 11.25,
+                "path_length": 22.718637466430664,
+                "avg_uncertainty": 0.1018627659574468
+            },
+            {
+                "episode": 174,
+                "result": "Success",
+                "reward": 33.791996002197266,
+                "steps": 54,
+                "time": 13.25,
+                "path_length": 19.67722511291504,
+                "avg_uncertainty": 0.15748272727272714
+            },
+            {
+                "episode": 175,
+                "result": "Success",
+                "reward": 27.24720573425293,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 15.768611907958984,
+                "avg_uncertainty": 0.16138999999999998
+            },
+            {
+                "episode": 176,
+                "result": "Success",
+                "reward": 28.3789119720459,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 16.208709716796875,
+                "avg_uncertainty": 0.06803095238095236
+            },
+            {
+                "episode": 177,
+                "result": "Success",
+                "reward": 29.045785903930664,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 20.325729370117188,
+                "avg_uncertainty": 0.10435568181818179
+            },
+            {
+                "episode": 178,
+                "result": "Collision",
+                "reward": -9.512332916259766,
+                "steps": 25,
+                "time": 6.0,
+                "path_length": 15.233917236328125,
+                "avg_uncertainty": 0.1350346153846154
+            },
+            {
+                "episode": 179,
+                "result": "Success",
+                "reward": 28.426149368286133,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 23.127906799316406,
+                "avg_uncertainty": 0.07754878048780486
+            },
+            {
+                "episode": 180,
+                "result": "Collision",
+                "reward": -6.544649124145508,
+                "steps": 47,
+                "time": 11.5,
+                "path_length": 15.339256286621094,
+                "avg_uncertainty": 0.2004624999999999
+            },
+            {
+                "episode": 181,
+                "result": "Collision",
+                "reward": -7.026884078979492,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 7.824432849884033,
+                "avg_uncertainty": 0.14236774193548388
+            },
+            {
+                "episode": 182,
+                "result": "Success",
+                "reward": 25.95319175720215,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 16.837072372436523,
+                "avg_uncertainty": 0.07330249999999998
+            },
+            {
+                "episode": 183,
+                "result": "Success",
+                "reward": 32.64353942871094,
+                "steps": 57,
+                "time": 14.0,
+                "path_length": 22.560138702392578,
+                "avg_uncertainty": 0.16286293103448263
+            },
+            {
+                "episode": 184,
+                "result": "Success",
+                "reward": 25.931499481201172,
+                "steps": 48,
+                "time": 11.75,
+                "path_length": 20.759275436401367,
+                "avg_uncertainty": 0.13702448979591833
+            },
+            {
+                "episode": 185,
+                "result": "Success",
+                "reward": 30.24701499938965,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 14.889660835266113,
+                "avg_uncertainty": 0.18024431818181813
+            },
+            {
+                "episode": 186,
+                "result": "Success",
+                "reward": 33.259639739990234,
+                "steps": 65,
+                "time": 16.0,
+                "path_length": 21.763315200805664,
+                "avg_uncertainty": 0.1474795454545454
+            },
+            {
+                "episode": 187,
+                "result": "Success",
+                "reward": 26.839534759521484,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 20.70309066772461,
+                "avg_uncertainty": 0.14774886363636358
+            },
+            {
+                "episode": 188,
+                "result": "Success",
+                "reward": 34.491416931152344,
+                "steps": 60,
+                "time": 14.75,
+                "path_length": 29.013954162597656,
+                "avg_uncertainty": 0.12958114754098357
+            },
+            {
+                "episode": 189,
+                "result": "Success",
+                "reward": 29.454402923583984,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 17.450166702270508,
+                "avg_uncertainty": 0.1518761363636363
+            },
+            {
+                "episode": 190,
+                "result": "Success",
+                "reward": 26.865737915039062,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 16.80875587463379,
+                "avg_uncertainty": 0.11925263157894732
+            },
+            {
+                "episode": 191,
+                "result": "Collision",
+                "reward": -10.521138191223145,
+                "steps": 23,
+                "time": 5.5,
+                "path_length": 8.165904998779297,
+                "avg_uncertainty": 0.08339999999999999
+            },
+            {
+                "episode": 192,
+                "result": "Success",
+                "reward": 26.082332611083984,
+                "steps": 47,
+                "time": 11.5,
+                "path_length": 14.372814178466797,
+                "avg_uncertainty": 0.17876874999999995
+            },
+            {
+                "episode": 193,
+                "result": "Success",
+                "reward": 32.2526969909668,
+                "steps": 47,
+                "time": 11.5,
+                "path_length": 24.07476043701172,
+                "avg_uncertainty": 0.1664677083333333
+            },
+            {
+                "episode": 194,
+                "result": "Success",
+                "reward": 29.98670768737793,
+                "steps": 55,
+                "time": 13.5,
+                "path_length": 15.66196346282959,
+                "avg_uncertainty": 0.1021473214285714
+            },
+            {
+                "episode": 195,
+                "result": "Collision",
+                "reward": -9.734867095947266,
+                "steps": 38,
+                "time": 9.25,
+                "path_length": 11.64438247680664,
+                "avg_uncertainty": 0.1327128205128205
+            },
+            {
+                "episode": 196,
+                "result": "Collision",
+                "reward": -9.855698585510254,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 17.01845932006836,
+                "avg_uncertainty": 0.17295609756097555
+            },
+            {
+                "episode": 197,
+                "result": "Collision",
+                "reward": -13.539766311645508,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 13.486124992370605,
+                "avg_uncertainty": 0.19829137931034482
+            },
+            {
+                "episode": 198,
+                "result": "Success",
+                "reward": 29.553274154663086,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 14.1215238571167,
+                "avg_uncertainty": 0.1315943181818182
+            },
+            {
+                "episode": 199,
+                "result": "Collision",
+                "reward": -4.151693344116211,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 18.009714126586914,
+                "avg_uncertainty": 0.172203488372093
+            },
+            {
+                "episode": 200,
+                "result": "Collision",
+                "reward": -7.944097518920898,
+                "steps": 29,
+                "time": 7.0,
+                "path_length": 14.834756851196289,
+                "avg_uncertainty": 0.16595
+            },
+            {
+                "episode": 201,
+                "result": "Success",
+                "reward": 31.501285552978516,
+                "steps": 65,
+                "time": 16.0,
+                "path_length": 26.22183609008789,
+                "avg_uncertainty": 0.14084469696969693
+            },
+            {
+                "episode": 202,
+                "result": "Success",
+                "reward": 27.593053817749023,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 22.327613830566406,
+                "avg_uncertainty": 0.13841704545454542
+            },
+            {
+                "episode": 203,
+                "result": "Success",
+                "reward": 28.387670516967773,
+                "steps": 45,
+                "time": 11.0,
+                "path_length": 19.44578742980957,
+                "avg_uncertainty": 0.1531989130434782
+            },
+            {
+                "episode": 204,
+                "result": "Success",
+                "reward": 30.52984619140625,
+                "steps": 45,
+                "time": 11.0,
+                "path_length": 16.15514373779297,
+                "avg_uncertainty": 0.11380217391304347
+            },
+            {
+                "episode": 205,
+                "result": "Collision",
+                "reward": -9.795122146606445,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 13.041943550109863,
+                "avg_uncertainty": 0.13433720930232554
+            },
+            {
+                "episode": 206,
+                "result": "Collision",
+                "reward": -2.931964874267578,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 20.234054565429688,
+                "avg_uncertainty": 0.17024767441860458
+            },
+            {
+                "episode": 207,
+                "result": "Success",
+                "reward": 30.309066772460938,
+                "steps": 50,
+                "time": 12.25,
+                "path_length": 18.732593536376953,
+                "avg_uncertainty": 0.12812058823529407
+            },
+            {
+                "episode": 208,
+                "result": "Success",
+                "reward": 26.401073455810547,
+                "steps": 37,
+                "time": 9.0,
+                "path_length": 20.065746307373047,
+                "avg_uncertainty": 0.15392894736842103
+            },
+            {
+                "episode": 209,
+                "result": "Success",
+                "reward": 26.512935638427734,
+                "steps": 38,
+                "time": 9.25,
+                "path_length": 16.077869415283203,
+                "avg_uncertainty": 0.12868461538461531
+            },
+            {
+                "episode": 210,
+                "result": "Success",
+                "reward": 28.965896606445312,
+                "steps": 46,
+                "time": 11.25,
+                "path_length": 25.149423599243164,
+                "avg_uncertainty": 0.0977340425531915
+            },
+            {
+                "episode": 211,
+                "result": "Collision",
+                "reward": -10.108870506286621,
+                "steps": 29,
+                "time": 7.0,
+                "path_length": 12.690336227416992,
+                "avg_uncertainty": 0.17581666666666662
+            },
+            {
+                "episode": 212,
+                "result": "Success",
+                "reward": 27.52007293701172,
+                "steps": 38,
+                "time": 9.25,
+                "path_length": 13.032007217407227,
+                "avg_uncertainty": 0.15889487179487177
+            },
+            {
+                "episode": 213,
+                "result": "Collision",
+                "reward": -9.404460906982422,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 10.86962890625,
+                "avg_uncertainty": 0.17157580645161288
+            },
+            {
+                "episode": 214,
+                "result": "Success",
+                "reward": 31.761219024658203,
+                "steps": 53,
+                "time": 13.0,
+                "path_length": 18.67732810974121,
+                "avg_uncertainty": 0.09869999999999998
+            },
+            {
+                "episode": 215,
+                "result": "Success",
+                "reward": 28.28244400024414,
+                "steps": 40,
+                "time": 9.75,
+                "path_length": 21.89090347290039,
+                "avg_uncertainty": 0.08040975609756096
+            },
+            {
+                "episode": 216,
+                "result": "Collision",
+                "reward": -9.407143592834473,
+                "steps": 31,
+                "time": 7.5,
+                "path_length": 12.2752046585083,
+                "avg_uncertainty": 0.17854999999999996
+            },
+            {
+                "episode": 217,
+                "result": "Success",
+                "reward": 25.645519256591797,
+                "steps": 34,
+                "time": 8.25,
+                "path_length": 12.315134048461914,
+                "avg_uncertainty": 0.09274142857142853
+            },
+            {
+                "episode": 218,
+                "result": "Collision",
+                "reward": -9.432558059692383,
+                "steps": 34,
+                "time": 8.25,
+                "path_length": 15.657675743103027,
+                "avg_uncertainty": 0.16300142857142852
+            },
+            {
+                "episode": 219,
+                "result": "Collision",
+                "reward": -8.217850685119629,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 12.051307678222656,
+                "avg_uncertainty": 0.12466451612903222
+            },
+            {
+                "episode": 220,
+                "result": "Collision",
+                "reward": -9.025803565979004,
+                "steps": 28,
+                "time": 6.75,
+                "path_length": 12.184414863586426,
+                "avg_uncertainty": 0.16041034482758623
+            },
+            {
+                "episode": 221,
+                "result": "Success",
+                "reward": 26.20467185974121,
+                "steps": 42,
+                "time": 10.25,
+                "path_length": 18.126230239868164,
+                "avg_uncertainty": 0.17103488372093018
+            },
+            {
+                "episode": 222,
+                "result": "Success",
+                "reward": 28.152873992919922,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 20.624908447265625,
+                "avg_uncertainty": 0.13518749999999996
+            },
+            {
+                "episode": 223,
+                "result": "Success",
+                "reward": 25.13875961303711,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 18.734783172607422,
+                "avg_uncertainty": 0.17786249999999992
+            },
+            {
+                "episode": 224,
+                "result": "Success",
+                "reward": 26.355907440185547,
+                "steps": 36,
+                "time": 8.75,
+                "path_length": 18.212154388427734,
+                "avg_uncertainty": 0.06296891891891891
+            },
+            {
+                "episode": 225,
+                "result": "Collision",
+                "reward": -11.197723388671875,
+                "steps": 23,
+                "time": 5.5,
+                "path_length": 13.97410774230957,
+                "avg_uncertainty": 0.11244166666666666
+            },
+            {
+                "episode": 226,
+                "result": "Collision",
+                "reward": -10.502121925354004,
+                "steps": 30,
+                "time": 7.25,
+                "path_length": 11.96112060546875,
+                "avg_uncertainty": 0.16704032258064513
+            },
+            {
+                "episode": 227,
+                "result": "Success",
+                "reward": 26.026086807250977,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 12.96955680847168,
+                "avg_uncertainty": 0.15598666666666663
+            },
+            {
+                "episode": 228,
+                "result": "Success",
+                "reward": 26.919950485229492,
+                "steps": 64,
+                "time": 15.75,
+                "path_length": 19.489177703857422,
+                "avg_uncertainty": 0.1476976923076922
+            },
+            {
+                "episode": 229,
+                "result": "Collision",
+                "reward": -12.89285659790039,
+                "steps": 26,
+                "time": 6.25,
+                "path_length": 9.458751678466797,
+                "avg_uncertainty": 0.1502148148148148
+            },
+            {
+                "episode": 230,
+                "result": "Success",
+                "reward": 28.182422637939453,
+                "steps": 53,
+                "time": 13.0,
+                "path_length": 22.73065948486328,
+                "avg_uncertainty": 0.11377870370370367
+            },
+            {
+                "episode": 231,
+                "result": "Success",
+                "reward": 30.546520233154297,
+                "steps": 51,
+                "time": 12.5,
+                "path_length": 15.347870826721191,
+                "avg_uncertainty": 0.14792980769230765
+            },
+            {
+                "episode": 232,
+                "result": "Success",
+                "reward": 27.802509307861328,
+                "steps": 39,
+                "time": 9.5,
+                "path_length": 13.258562088012695,
+                "avg_uncertainty": 0.14887625
+            },
+            {
+                "episode": 233,
+                "result": "Collision",
+                "reward": -10.02621841430664,
+                "steps": 32,
+                "time": 7.75,
+                "path_length": 13.240438461303711,
+                "avg_uncertainty": 0.16337575757575754
+            },
+            {
+                "episode": 234,
+                "result": "Collision",
+                "reward": -3.823413848876953,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 14.800512313842773,
+                "avg_uncertainty": 0.17837023809523803
+            },
+            {
+                "episode": 235,
+                "result": "Success",
+                "reward": 27.839399337768555,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 19.627456665039062,
+                "avg_uncertainty": 0.10681555555555552
+            },
+            {
+                "episode": 236,
+                "result": "Success",
+                "reward": 33.04173278808594,
+                "steps": 94,
+                "time": 23.25,
+                "path_length": 30.848079681396484,
+                "avg_uncertainty": 0.0853736842105263
+            },
+            {
+                "episode": 237,
+                "result": "Collision",
+                "reward": -9.553186416625977,
+                "steps": 44,
+                "time": 10.75,
+                "path_length": 17.769777297973633,
+                "avg_uncertainty": 0.1769755555555555
+            },
+            {
+                "episode": 238,
+                "result": "Success",
+                "reward": 28.89847755432129,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 16.096446990966797,
+                "avg_uncertainty": 0.16230681818181814
+            },
+            {
+                "episode": 239,
+                "result": "Success",
+                "reward": 31.97443199157715,
+                "steps": 53,
+                "time": 13.0,
+                "path_length": 25.74837303161621,
+                "avg_uncertainty": 0.08181574074074069
+            },
+            {
+                "episode": 240,
+                "result": "Success",
+                "reward": 27.39788818359375,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 20.7694149017334,
+                "avg_uncertainty": 0.129347619047619
+            },
+            {
+                "episode": 241,
+                "result": "Success",
+                "reward": 32.349143981933594,
+                "steps": 49,
+                "time": 12.0,
+                "path_length": 19.9753475189209,
+                "avg_uncertainty": 0.09146899999999998
+            },
+            {
+                "episode": 242,
+                "result": "Collision",
+                "reward": -8.377509117126465,
+                "steps": 32,
+                "time": 7.75,
+                "path_length": 15.859354019165039,
+                "avg_uncertainty": 0.18007121212121213
+            },
+            {
+                "episode": 243,
+                "result": "Success",
+                "reward": 26.38825225830078,
+                "steps": 35,
+                "time": 8.5,
+                "path_length": 16.013290405273438,
+                "avg_uncertainty": 0.16194305555555552
+            },
+            {
+                "episode": 244,
+                "result": "Collision",
+                "reward": -2.9238033294677734,
+                "steps": 41,
+                "time": 10.0,
+                "path_length": 16.049142837524414,
+                "avg_uncertainty": 0.1545916666666666
+            },
+            {
+                "episode": 245,
+                "result": "Collision",
+                "reward": -8.399125099182129,
+                "steps": 29,
+                "time": 7.0,
+                "path_length": 9.633008003234863,
+                "avg_uncertainty": 0.10514999999999998
+            },
+            {
+                "episode": 246,
+                "result": "Success",
+                "reward": 30.29300308227539,
+                "steps": 48,
+                "time": 11.75,
+                "path_length": 20.704021453857422,
+                "avg_uncertainty": 0.11949693877551015
+            },
+            {
+                "episode": 247,
+                "result": "Collision",
+                "reward": -9.076200485229492,
+                "steps": 26,
+                "time": 6.25,
+                "path_length": 10.344758033752441,
+                "avg_uncertainty": 0.13582592592592593
+            },
+            {
+                "episode": 248,
+                "result": "Collision",
+                "reward": -7.697307586669922,
+                "steps": 31,
+                "time": 7.5,
+                "path_length": 14.420807838439941,
+                "avg_uncertainty": 0.13890468749999996
+            },
+            {
+                "episode": 249,
+                "result": "Success",
+                "reward": 28.334518432617188,
+                "steps": 43,
+                "time": 10.5,
+                "path_length": 22.130403518676758,
+                "avg_uncertainty": 0.16716022727272725
+            }
+        ]
+    }
+}

@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import copy
 
-from rl.networks.network_utils import init
+from rl.networks.network_utils import init, LoRALinear
 
 
 class RNNBase(nn.Module):
@@ -220,7 +220,7 @@ class EdgeAttention(nn.Module):
     '''
     Class representing the attention module
     '''
-    def __init__(self, args):
+    def __init__(self, args, config=None):
         '''
         Initializer function
         params:
@@ -230,6 +230,7 @@ class EdgeAttention(nn.Module):
         super(EdgeAttention, self).__init__()
 
         self.args = args
+        self.config = config
 
         # Store required sizes
         self.human_human_edge_rnn_size = args.human_human_edge_rnn_size
@@ -242,10 +243,17 @@ class EdgeAttention(nn.Module):
         self.temporal_edge_layer=nn.ModuleList()
         self.spatial_edge_layer=nn.ModuleList()
 
-        self.temporal_edge_layer.append(nn.Linear(self.human_human_edge_rnn_size, self.attention_size))
+        temporal_layer = nn.Linear(self.human_human_edge_rnn_size, self.attention_size)
+        spatial_layer = nn.Linear(self.human_human_edge_rnn_size, self.attention_size)
+
+        if self.config is not None and hasattr(self.config, 'lora') and self.config.lora.use_lora:
+            temporal_layer = LoRALinear(temporal_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            spatial_layer = LoRALinear(spatial_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+
+        self.temporal_edge_layer.append(temporal_layer)
 
         # Linear layer to embed spatial edgeRNN hidden states
-        self.spatial_edge_layer.append(nn.Linear(self.human_human_edge_rnn_size, self.attention_size))
+        self.spatial_edge_layer.append(spatial_layer)
 
 
 
@@ -327,7 +335,7 @@ class SRNN(nn.Module):
     """
     Class for the DS-RNN model, see https://arxiv.org/abs/2011.04820 for details
     """
-    def __init__(self, obs_space_dict, args, infer=False):
+    def __init__(self, obs_space_dict, args, config=None, infer=False):
         """
         Initializer function
         params:
@@ -338,6 +346,7 @@ class SRNN(nn.Module):
         self.infer = infer
         self.is_recurrent = True
         self.args=args
+        self.config = config
 
         self.human_num = obs_space_dict['spatial_edges'].shape[0]
 
@@ -358,7 +367,7 @@ class SRNN(nn.Module):
         self.humanhumanEdgeRNN_temporal = HumanHumanEdgeRNN(args)
 
         # Initialize attention module
-        self.attn = EdgeAttention(args)
+        self.attn = EdgeAttention(args, self.config)
 
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                                constant_(x, 0), np.sqrt(2))

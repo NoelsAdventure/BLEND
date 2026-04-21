@@ -1,12 +1,15 @@
+import json
 import numpy as np
 import torch
 import os
 import csv
+from datetime import datetime
+import uuid
 
 from crowd_sim.envs.utils.info import *
 
 
-def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False):
+def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False, test_args=None):
     """ function to run all testing episodes and log the testing metrics """
     # initializations
     eval_episode_rewards = []
@@ -40,6 +43,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
     all_path_len = []
     all_avg_uncertainty = []
+
+    # Store detailed per-episode data
+    episodes_data = []
 
     # to make it work with the virtualenv in sim2real
     if hasattr(eval_envs.venv, 'envs'):
@@ -149,30 +155,40 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         all_path_len.append(path_len)
         too_close_ratios.append(too_close/stepCounter*100)
         
-        if len(episode_uncertainties) > 0:
-            all_avg_uncertainty.append(np.mean(episode_uncertainties))
-        else:
-            all_avg_uncertainty.append(0.0)
+        avg_uncertainty = np.mean(episode_uncertainties) if len(episode_uncertainties) > 0 else 0.0
+        all_avg_uncertainty.append(avg_uncertainty)
 
+        episode_result = 'Unknown'
         if isinstance(infos[0]['info'], ReachGoal):
             success += 1
             success_times.append(global_time)
+            episode_result = 'Success'
             print('Success')
         elif isinstance(infos[0]['info'], Collision):
             collision += 1
             collision_cases.append(k)
             collision_times.append(global_time)
+            episode_result = 'Collision'
             print('Collision')
         elif isinstance(infos[0]['info'], Timeout):
             timeout += 1
             timeout_cases.append(k)
             timeout_times.append(time_limit)
+            episode_result = 'Timeout'
             print('Time out')
-        elif isinstance(infos[0]['info'] is None):
-            pass
-        else:
-            raise ValueError('Invalid end signal from environment')
+        
+        episodes_data.append({
+            'episode': k,
+            'result': episode_result,
+            'reward': float(episode_rew),
+            'steps': stepCounter,
+            'time': float(global_time),
+            'path_length': float(path_len),
+            'avg_uncertainty': float(avg_uncertainty)
+        })
+
         print(f"current SR: {success/(k+1)}; current CR: {collision/(k+1)}")
+
     # all episodes end
     success_rate = success / test_size
     collision_rate = collision / test_size
@@ -192,15 +208,57 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
     logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
     
-    file_path = os.path.join(model_dir, 'test', 'evaluation_data.csv')
-    with open(file_path, 'w', newline='') as file:
+    # JSON logic
+    json_file_path = os.path.join(model_dir, 'test', 'all_evaluations.json')
+    all_data = {}
+    if os.path.exists(json_file_path):
+        try:
+            with open(json_file_path, 'r') as f:
+                all_data = json.load(f)
+        except Exception as e:
+            logging.error(f"Error reading existing JSON: {e}")
+            all_data = {}
+
+    lora_scale = getattr(test_args, 'lora_scale', 1.0)
+    exp_id = getattr(test_args, 'exp_id', None)
+    if exp_id is None:
+        exp_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
+
+    new_entry = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'config': {
+            'robot_visible': config.robot.visible,
+            'human_random': config.env.randomize_attributes,
+            'use_lora': getattr(config.lora, 'use_lora', False),
+            'lora_alpha': getattr(config.lora, 'alpha', None),
+            'lora_rank': getattr(config.lora, 'rank', None),
+            'lora_scale': lora_scale,
+            'test_model': getattr(test_args, 'test_model', None),
+            'model_dir': model_dir
+        },
+        'summary': {
+            'success_rate': float(success_rate),
+            'collision_rate': float(collision_rate),
+            'timeout_rate': float(timeout_rate),
+            'avg_nav_time': float(avg_nav_time),
+            'avg_path_length': float(np.mean(all_path_len)),
+            'avg_uncertainty': float(np.mean(all_avg_uncertainty))
+        },
+        'episodes': episodes_data
+    }
+    
+    all_data[exp_id] = new_entry
+    
+    with open(json_file_path, 'w') as f:
+        json.dump(all_data, f, indent=4)
+    
+    # Keep CSV for backward compatibility (per-run)
+    csv_file_path = os.path.join(model_dir, 'test', f'evaluation_data_scale_{lora_scale}.csv')
+    with open(csv_file_path, 'w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['Success Times', 'Collision Times', 'Timeout Times', 'Path Length', 'Min Distance', 'Avg Uncertainty'])
         
-        # Determine the maximum length of the lists
         max_length = max(len(success_times), len(collision_times), len(timeout_times), len(all_path_len), len(min_dist), len(all_avg_uncertainty))
-        
-        # Write data to CSV, handling missing values directly
         for i in range(max_length):
             row = [
                 success_times[i] if i < len(success_times) else '',

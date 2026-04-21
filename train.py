@@ -32,8 +32,8 @@ def main():
     
     # Create unique model name based on configuration parameters
     if hasattr(env_config, 'lora') and env_config.lora.use_lora:
-        # New LoRA naming convention: LORA_visi_invi_alpha_x
-        model_name = f"LORA_visi_invi_alpha_{env_config.lora.alpha}"
+        # New LoRA naming convention: use config.note and append LoRA details
+        model_name = f"{env_config.note}_alpha_{env_config.lora.alpha}"
     else:
         # Keep original naming for standard models
         model_name = f"{env_config.note}_seed_{algo_args.seed}_curr_buffer_{env_config.aci_related.current_position_buffer}_c_l_{env_config.constrained_rl_related.cost_limit}_clip_param_{algo_args.clip_param}_considered_steps_{env_config.aci_related.considered_steps}_alpha_{env_config.aci_related.alpha}_noise_{env_config.aci_related.noise_clip_for_conformity_scores}_{env_config.aci_related.noise_clip_for_cost}"
@@ -118,21 +118,42 @@ def main():
         print(f"Loading weights from {load_path}")
         state_dict = torch.load(load_path, map_location=device)
         
-        # If model has LoRA enabled, we map standard keys to LoRA base_layer keys
-        if hasattr(env_config, 'lora') and env_config.lora.use_lora:
-            new_state_dict = {}
-            for key, value in state_dict.items():
-                new_key = key
-                # Map standard linear layers to LoRA base_layers
-                if "critic_linear" in new_key and "base_layer" not in new_key:
-                    new_key = new_key.replace("critic_linear", "critic_linear.base_layer")
-                elif "dist.fc_mean" in new_key and "base_layer" not in new_key:
-                    new_key = new_key.replace("dist.fc_mean", "dist.fc_mean.base_layer")
-                elif "dist.linear" in new_key and "base_layer" not in new_key:
-                    new_key = new_key.replace("dist.linear", "dist.linear.base_layer")
-                
-                new_state_dict[new_key] = value
-            state_dict = new_state_dict
+        # Map standard keys to LoRA and rename old module names to new ones
+        new_state_dict = {}
+        model_state_dict = actor_critic.state_dict()
+        
+        # Translation map for old variable names to new ones
+        # Keys are old patterns, values are new patterns
+        name_translation = {
+            "humanNodeRNN": "node_rnn",
+            "attn": "hr_attn",
+            "spatial_attn": "hh_attn",
+            "spatial_linear": "hh_out_proj",
+            "temporal_edge_layer": "robot_feature_proj",
+            "spatial_edge_layer": "human_feature_proj"
+        }
+
+        for key, value in state_dict.items():
+            translated_key = key
+            # 1. Translate old module names to new ones recursively
+            # We use a loop to replace all occurrences of old names in the key
+            for old_name, new_name in name_translation.items():
+                if f".{old_name}." in translated_key:
+                    translated_key = translated_key.replace(f".{old_name}.", f".{new_name}.")
+                elif translated_key.startswith(f"{old_name}."):
+                    translated_key = translated_key.replace(f"{old_name}.", f"{new_name}.", 1)
+
+            # 2. Map standard Linear to LoRA base_layer if LoRA is enabled
+            if hasattr(env_config, 'lora') and env_config.lora.use_lora:
+                base_layer_key = translated_key.replace(".weight", ".base_layer.weight").replace(".bias", ".base_layer.bias")
+                if base_layer_key in model_state_dict:
+                    new_state_dict[base_layer_key] = value
+                    continue
+            
+            # Use translated key (or original if no LoRA mapping was found/needed)
+            new_state_dict[translated_key] = value
+            
+        state_dict = new_state_dict
 
         # Load mapped weights into both networks (both now use LoRA)
         actor_critic.load_state_dict(state_dict, strict=False)
