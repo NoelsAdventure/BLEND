@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from rl.networks.distributions import Bernoulli, Categorical, DiagGaussian
 from .srnn_model import SRNN
-from .selfAttn_srnn_temp_node import selfAttn_merge_SRNN
+from .selfAttn_srnn_temp_node import selfAttn_merge_SRNN 
 from .networkss import networkss
 from .network_utils import LoRALinear
 
@@ -44,17 +44,13 @@ class Policy(nn.Module):
             self.dist = Bernoulli(self.base.output_size, num_outputs)
         else:
             raise NotImplementedError
-            
-        # Freeze all parameters if LoRA is enabled
-        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
-            for param in self.parameters():
-                param.requires_grad = False
-            
-            # Unfreeze only LoRA parameters
-            for name, param in self.named_parameters():
-                if 'lora_A' in name or 'lora_B' in name:
-                    param.requires_grad = True
 
+        # Freeze all non-LoRA parameters if LoRA is used
+        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
+            for name, param in self.named_parameters():
+                if 'lora_' not in name:
+                    param.requires_grad = False
+            
     @property
     def is_recurrent(self):
         return self.base.is_recurrent

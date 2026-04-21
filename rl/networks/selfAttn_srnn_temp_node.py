@@ -369,6 +369,8 @@ class selfAttn_merge_SRNN(nn.Module):
         else:
             self.dummy_human_mask = Variable(torch.Tensor([dummy_human_mask]).cuda())
 
+
+
     def forward(self, inputs, rnn_hxs, masks, infer=False):
         if infer:
             seq_length = 1

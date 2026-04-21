@@ -1,15 +1,18 @@
-2026-04-21 17:20:36, INFO: robot FOV 2.000000
-2026-04-21 17:20:36, INFO: humans FOV 2.000000
-2026-04-21 17:20:36, INFO: Create other envs with new settings
-2026-04-21 17:20:36, INFO: human number: 20
-2026-04-21 17:20:36, INFO: Randomize human's radius and preferred speed
-2026-04-21 17:20:36, INFO: Circle width: 8.485281374238571
-2026-04-21 17:20:36, INFO: robot FOV 6.283185
-2026-04-21 17:20:36, INFO: humans FOV 6.283185
-2026-04-21 17:20:36, INFO: Set dynamic_scale for LoRALinear module to 0.3
-2026-04-21 17:20:36, INFO: Set dynamic_scale for LoRALinear module to 0.3
-2026-04-21 17:20:36, INFO: Set dynamic_scale for LoRALinear module to 0.3
-2026-04-21 17:20:36, INFO: Set dynamic_scale for LoRALinear module to 0.3
-2026-04-21 17:20:36, INFO: Set dynamic_scale for LoRALinear module to 0.3
-2026-04-21 17:20:36, INFO: Set dynamic_scale for LoRALinear module to 0.3
-2026-04-21 17:20:36, INFO: Set dynamic_scale for LoRALinear module to 0.3
+2026-04-21 20:24:53, INFO: robot FOV 2.000000
+2026-04-21 20:24:53, INFO: humans FOV 2.000000
+2026-04-21 20:24:53, INFO: Create other envs with new settings
+2026-04-21 20:24:53, INFO: human number: 20
+2026-04-21 20:24:53, INFO: Randomize human's radius and preferred speed
+2026-04-21 20:24:53, INFO: Circle width: 8.485281374238571
+2026-04-21 20:24:53, INFO: robot FOV 6.283185
+2026-04-21 20:24:53, INFO: humans FOV 6.283185
+2026-04-21 20:24:53, INFO: Set dynamic_scale for LoRALinear module to 1.0
+2026-04-21 20:24:53, INFO: Set dynamic_scale for LoRALinear module to 1.0
+2026-04-21 20:24:53, INFO: Set dynamic_scale for LoRALinear module to 1.0
+2026-04-21 20:24:53, INFO: Set dynamic_scale for LoRALinear module to 1.0
+2026-04-21 20:24:53, INFO: Set dynamic_scale for LoRALinear module to 1.0
+2026-04-21 20:24:53, INFO: Set dynamic_scale for LoRALinear module to 1.0
+2026-04-21 20:24:53, INFO: Set dynamic_scale for LoRALinear module to 1.0
+2026-04-21 20:32:08, INFO: Testing success rate: 0.9480, collision rate: 0.0400, timeout rate: 0.0120, nav time: 19.3217, path length: 26.4446, average intrusion ratio: 2.6762%, average minimal distance during intrusions: 0.4024, average prediction uncertainty: 0.1019
+2026-04-21 20:32:08, INFO: Collision cases: 26 42 62 140 153 164 167 203 226 240
+2026-04-21 20:32:08, INFO: Timeout cases: 11 104 196

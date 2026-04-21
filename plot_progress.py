@@ -125,8 +125,9 @@ if __name__ == "__main__":
         {'path': 'trained_models/ours_gst_visible_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (random:visi)'},
         {'path': 'trained_models/Ours_GST', 'name': 'Fulltune (random:invi)'},
         {'path': 'trained_models/Fulltune_visi_invi_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (visi:invi)'},
-        {'path': 'trained_models/LORA_visi_invi_alpha_1024', 'name': 'LoraA (visi:invi)'},
-        {'path': 'trained_models/LoraB_visi_invi_alpha_1024', 'name': 'LoraB (visi:invi)'},
+        {'path': 'trained_models/LoraC_visi_invi_alpha_1024', 'name': 'LoraA (visi:invi)'},
+        {'path': 'trained_models/LORA_visi_invi_alpha_1024', 'name': 'LoraB (visi:invi)'},
+        {'path': 'trained_models/LoraB_visi_invi_alpha_1024', 'name': 'LoraC (visi:invi)'},
     ]
 
     if args.dirs:
