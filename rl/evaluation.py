@@ -141,7 +141,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             baseEnv.robot.visible = False
             
             # Start with LoRA OFF (if switching)
-            if behaviour == 'switching':
+            if behaviour in ['switching', 'adaptive']:
                 baseEnv.robot.lora_enabled = False
                 baseEnv.robot.lora_scale = 0.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -151,7 +151,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         elif scenario == 'seperate_all_ignorant':
             baseEnv.robot.visible = False
-            if behaviour == 'switching':
+            if behaviour in ['switching', 'adaptive']:
                 baseEnv.robot.lora_enabled = False
                 baseEnv.robot.lora_scale = 0.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -161,7 +161,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         elif scenario == 'seperate_all_aware':
             baseEnv.robot.visible = True
-            if behaviour == 'switching':
+            if behaviour in ['switching', 'adaptive']:
                 baseEnv.robot.lora_enabled = True
                 baseEnv.robot.lora_scale = 1.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -176,7 +176,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # Adaptive LoRA Proof of Concept: Mid-episode switch for 'seperate_ignorant_to_aware_step25' scenario
             if scenario == 'seperate_ignorant_to_aware_step25' and stepCounter == 25:
                 baseEnv.robot.visible = True
-                if behaviour == 'switching':
+                if behaviour in ['switching', 'adaptive']:
                     print(f"\n>>> Step {stepCounter}: Switching to VISIBLE and LoRA ON (Adaptive PoC)")
                     baseEnv.robot.lora_scale = 1.0
                         
@@ -184,6 +184,75 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                     for module in actor_critic.modules():
                         if isinstance(module, (LoRALinear, LoRAAdapter)):
                             module.dynamic_scale = 1.0
+
+            # Adaptive LoRA Proof of Concept: Zone-based switching for 'seperate_mixed_5050' scenario
+            if scenario == 'seperate_mixed_5050':
+                if behaviour == 'adaptive':
+                    # Continuous adaptive scale based on distance-weighted ratio
+                    robot_pos = baseEnv.robot.get_position()
+                    total_weight = 0.0
+                    friendly_weight = 0.0
+                    
+                    for i, human in enumerate(baseEnv.humans):
+                        dist = np.linalg.norm(np.array(human.get_position()) - np.array(robot_pos))
+                        if dist <= baseEnv.robot.sensor_range:
+                            # Calculate weight: closer humans have higher weight (1.0 at dist=0, 0.0 at dist=sensor_range)
+                            weight = max(0.0, 1.0 - (dist / baseEnv.robot.sensor_range))
+                            total_weight += weight
+                            
+                            if baseEnv.robot.visible_to_humans[i]:
+                                friendly_weight += weight
+                    
+                    # Calculate continuous target scale
+                    if total_weight <= 0.0:
+                        target_scale = 1.0  # Default to 1.0 if no humans in range
+                    else:
+                        target_scale = friendly_weight / total_weight
+                        
+                    # Apply change if scale differs significantly
+                    if abs(target_scale - baseEnv.robot.lora_scale) > 0.01:
+                        print(f"\n>>> Step {stepCounter}: Target Scale = {target_scale:.2f} (Total Weight: {total_weight:.2f}, Friendly: {friendly_weight:.2f})")
+                        baseEnv.robot.lora_scale = target_scale
+                        baseEnv.robot.lora_enabled = (target_scale > 0)
+                        
+                        from rl.networks.network_utils import LoRALinear, LoRAAdapter
+                        for module in actor_critic.modules():
+                            if isinstance(module, (LoRALinear, LoRAAdapter)):
+                                module.dynamic_scale = target_scale
+
+                elif behaviour == 'switching':
+                    # Get robot position
+                    robot_pos = baseEnv.robot.get_position()
+                    
+                    humans_in_range = []
+                    friendly_in_range = 0
+                    
+                    for i, human in enumerate(baseEnv.humans):
+                        dist = np.linalg.norm(np.array(human.get_position()) - np.array(robot_pos))
+                        if dist <= baseEnv.robot.sensor_range:
+                            humans_in_range.append(i)
+                            if baseEnv.robot.visible_to_humans[i]:
+                                friendly_in_range += 1
+                    
+                    # Calculate target lora_scale
+                    if not humans_in_range:
+                        target_scale = 1.0  # Default to LoRA ON if no humans in range
+                        ratio = 1.0
+                    else:
+                        ratio = friendly_in_range / len(humans_in_range)
+                        target_scale = 1.0 if ratio > 0.5 else 0.0
+                    
+                    # Apply change if scale needs update
+                    if target_scale != baseEnv.robot.lora_scale:
+                        msg = f"Ratio {friendly_in_range}/{len(humans_in_range)}={ratio:.2f}" if humans_in_range else "No humans in range"
+                        print(f"\n>>> Step {stepCounter}: {msg}. Switching LoRA to {target_scale}")
+                        baseEnv.robot.lora_scale = target_scale
+                        baseEnv.robot.lora_enabled = (target_scale > 0)
+                        
+                        from rl.networks.network_utils import LoRALinear, LoRAAdapter
+                        for module in actor_critic.modules():
+                            if isinstance(module, (LoRALinear, LoRAAdapter)):
+                                module.dynamic_scale = target_scale
             
             # Collect data for the CURRENT step before taking the next action
             # Robot features in robot_node: [px, py, radius, gx, gy, v_pref, theta]

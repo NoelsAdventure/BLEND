@@ -29,7 +29,7 @@ def main():
     
     # Arguments added for Adaptive LoRA PoC
     parser.add_argument('--lora_scale', type=float, default=1.0)
-    parser.add_argument('--lora_behaviour', type=str, choices=['switching', 'always_off', 'always_on'], default='switching')
+    parser.add_argument('--lora_behaviour', type=str, choices=['switching', 'adaptive', 'always_off', 'always_on'], default='adaptive')
     parser.add_argument('--robot_visible', type=str, default=None, help='Override robot visibility: True or False')
     parser.add_argument('--human_num', type=int, default=None, help='Override number of humans')
     parser.add_argument('--test_size', type=int, default=1, help='Number of episodes to test')
