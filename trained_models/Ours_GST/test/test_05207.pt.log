@@ -1,8 +1,12 @@
-2026-04-21 14:29:35, INFO: robot FOV 2.000000
-2026-04-21 14:29:35, INFO: humans FOV 2.000000
-2026-04-21 14:29:35, INFO: Create other envs with new settings
-2026-04-21 14:29:35, INFO: human number: 20
-2026-04-21 14:29:35, INFO: Randomize human's radius and preferred speed
-2026-04-21 14:29:35, INFO: Circle width: 8.485281374238571
-2026-04-21 14:29:35, INFO: robot FOV 6.283185
-2026-04-21 14:29:35, INFO: humans FOV 6.283185
+2026-04-27 13:47:20, INFO: robot FOV 2.000000
+2026-04-27 13:47:20, INFO: humans FOV 2.000000
+2026-04-27 13:47:20, INFO: Create other envs with new settings
+2026-04-27 13:47:20, INFO: human number: 20
+2026-04-27 13:47:20, INFO: Randomize human's radius and preferred speed
+2026-04-27 13:47:20, INFO: Circle width: 8.485281374238571
+2026-04-27 13:47:20, INFO: robot FOV 6.283185
+2026-04-27 13:47:20, INFO: humans FOV 6.283185
+2026-04-27 14:01:35, INFO: Testing success rate: 0.9880, collision rate: 0.0120, timeout rate: 0.0000, nav time: 17.2743, path length: 24.5505, average intrusion ratio: 3.4552%, average minimal distance during intrusions: 0.4327, average prediction uncertainty: 0.1041
+2026-04-27 14:01:35, INFO: Collision cases: 94 105 226 344 355 476
+2026-04-27 14:01:35, INFO: Timeout cases: 
+2026-04-27 14:01:47, INFO: Full experiment data saved to trained_models/Ours_GST/test/Baseline_Invi_Separate_500.json

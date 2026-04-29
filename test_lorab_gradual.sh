@@ -1,26 +1,23 @@
 #!/bin/bash
 
-# Script to test the LoraB model with varying LoRA scales (0% to 100%)
-# to see if it becomes gradually more conservative.
+# Script to test the LoraE model with varying LoRA scales (0.0 to 2.0)
+# to see how behaviour scales beyond standard ranges.
 
-MODEL_DIR="trained_models/LoraB_visi_invi_alpha_1024"
+MODEL_DIR="trained_models/LoraE_invi_visi_alpha_128"
 CHECKPOINT="05207.pt"
 
-# Base experiment ID (timestamp)
-BASE_EXP_ID="lorab_gradual_$(date +'%Y%m%d_%H%M%S')"
-
-# Array of scales: 0.0, 0.1, 0.2, ..., 1.0
-scales=("0.4" "0.5" "0.6" "0.7" "0.8" "0.9" "1.0")
+# Array of scales: 0.0, 0.2, 0.4, ..., 2.0
+scales=("0.0" "0.2" "0.4" "0.6" "0.8" "1.0" "1.2" "1.4" "1.6" "1.8" "2.0")
 
 for scale in "${scales[@]}"; do
     echo "=========================================================="
-    echo "TESTING LORAB WITH SCALE: $scale"
+    echo "TESTING LORAE WITH SCALE: $scale"
     echo "=========================================================="
-    
-    # Run test.py with the specific scale and experiment ID
+     
+    # Run test.py with the specific scale
     # We pass any additional script arguments (like --visualize) using "$@"
-    python test.py --model_dir "$MODEL_DIR" --test_model "$CHECKPOINT" --lora_scale "$scale" --exp_id "${BASE_EXP_ID}_scale_${scale}" "$@"
-    
+    python test.py --model_dir "$MODEL_DIR" --test_model "$CHECKPOINT" --lora_scale "$scale" "$@"
+     
     echo "Finished test for scale $scale"
     echo ""
 done

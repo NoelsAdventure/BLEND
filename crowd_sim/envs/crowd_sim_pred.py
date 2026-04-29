@@ -157,10 +157,21 @@ class CrowdSimPred(CrowdSimVarNum):
                 self.episodeRecoder.saveEpisode(self.case_counter['test'])
 
         # apply action and update all agents
+        last_pos = self.robot.get_position()
         self.robot.step(action)
         for i, human_action in enumerate(human_actions):
             self.humans[i].step(human_action)
             self.cur_human_states[i] = np.array([self.humans[i].px, self.humans[i].py, self.humans[i].radius])
+
+        # Update robot path and distance
+        new_pos = self.robot.get_position()
+        if not hasattr(self, 'robot_path'):
+            self.robot_path = [last_pos]
+        if not hasattr(self, 'cumulative_path_length'):
+            self.cumulative_path_length = 0.0
+        
+        self.robot_path.append(new_pos)
+        self.cumulative_path_length += np.linalg.norm(np.array(new_pos) - np.array(last_pos))
 
         self.global_time += self.time_step # max episode length=time_limit/time_step
         self.step_counter = self.step_counter+1
@@ -237,7 +248,16 @@ class CrowdSimPred(CrowdSimVarNum):
 
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 
-        robot_color = 'gold'
+        # Robot color: red when aggressive (lora_scale = 1), yellow when conservative (lora_scale = 0)
+        # Gradually change depending on the lora scale
+        if hasattr(self.robot, 'lora_scale'):
+            scale = np.clip(self.robot.lora_scale, 0, 1)
+            robot_color = (1.0, 1.0 - scale, 0.0)
+        elif hasattr(self.robot, 'lora_enabled') and self.robot.lora_enabled:
+            robot_color = 'red'
+        else:
+            robot_color = 'yellow'
+            
         goal_color = 'red'
         arrow_color = 'red'
         arrow_style = patches.ArrowStyle("->", head_length=4, head_width=2)
@@ -337,11 +357,18 @@ class CrowdSimPred(CrowdSimVarNum):
             ax.add_artist(human_circles[i])
             artists.append(human_circles[i])
 
-            # green: visible; red: invisible
-            if self.detect_visible(self.robot, self.humans[i], robot1=True):
-                human_circles[i].set_color(c='b')
+            # Check if robot is visible to this specific human (Friendly vs Ignorant)
+            is_visible = False
+            if hasattr(self.robot, 'visible_to_humans'):
+                is_visible = self.robot.visible_to_humans[i]
             else:
-                human_circles[i].set_color(c='r')
+                is_visible = self.robot.visible
+
+            # Green: Friendly (can see robot); Blue: Ignorant (cannot see robot)
+            if is_visible:
+                human_circles[i].set_color(c='g')
+            else:
+                human_circles[i].set_color(c='b')
 
 
             if -actual_arena_size <= self.humans[i].px <= actual_arena_size and -actual_arena_size <= self.humans[

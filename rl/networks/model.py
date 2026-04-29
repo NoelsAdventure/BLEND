@@ -22,10 +22,8 @@ class Policy(nn.Module):
 
         if base == 'srnn':
             base=SRNN
-        elif base == 'selfAttn_merge_srnn':
+        elif base == 'selfAttn_merge_srnn' or base == 'networks':
             base = selfAttn_merge_SRNN
-        elif base == 'networks':
-            base = networkss
         else:
             raise NotImplementedError
 
@@ -48,6 +46,7 @@ class Policy(nn.Module):
         # Freeze all non-LoRA parameters if LoRA is used
         if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
             for name, param in self.named_parameters():
+                # Keep LoRA parameters, the final distribution heads, and input/output projections trainable
                 if 'lora_' not in name:
                     param.requires_grad = False
             

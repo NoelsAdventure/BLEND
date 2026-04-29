@@ -34,7 +34,13 @@ def main():
     parser.add_argument('--save_slides', default=False, action='store_true')
     # dynamic LoRA scale for testing gradual changes
     parser.add_argument('--lora_scale', type=float, default=1.0)
+    parser.add_argument('--lora_behaviour', type=str, choices=['switching', 'always_off', 'always_on', 'none'], default='none')
     parser.add_argument('--exp_id', type=str, default=None)
+    parser.add_argument('--robot_visible', type=str, default=None, help='Override robot visibility: True or False')
+    parser.add_argument('--human_num', type=int, default=None, help='Override number of humans')
+    parser.add_argument('--test_size', type=int, default=250, help='Number of episodes to test')
+    parser.add_argument('--adaptive_lora_scenario', type=str, choices=['seperate_ignorant_to_aware_step25', 'seperate_mixed_5050', 'seperate_all_ignorant', 'seperate_all_aware', 'none'], default='none',
+                        help='Proof of concept scenarios: seperate_ignorant_to_aware_step25 (switch at step 25), seperate_mixed_5050 (mixed), seperate_all_ignorant, or seperate_all_aware')
     
     # Use parse_known_args so test.py only takes what it needs
     test_args, unknown = parser.parse_known_args()
@@ -70,6 +76,15 @@ def main():
     Config = getattr(model_config_mod, 'Config')
 
     env_config = config = Config()
+    
+    # Apply overrides from command line
+    if test_args.robot_visible is not None:
+        env_config.robot.visible = (test_args.robot_visible.lower() == 'true')
+        logging.info(f"Overriding robot.visible to {env_config.robot.visible}")
+    if test_args.human_num is not None:
+        env_config.sim.human_num = test_args.human_num
+        logging.info(f"Overriding sim.human_num to {env_config.sim.human_num}")
+
     env_config.aci_related.noise_clip_for_conformity_scores = 0.0
     env_config.aci_related.noise_std_for_conformity_scores = 0.0
     
@@ -85,8 +100,6 @@ def main():
         log_file = os.path.join(test_args.model_dir, 'test', 'test_visual.log')
     else:
         log_file = os.path.join(test_args.model_dir, 'test', 'test_' + test_args.test_model + '.log')
-
-
 
     file_handler = logging.FileHandler(log_file, mode='w')
     stdout_handler = logging.StreamHandler(sys.stdout)
@@ -110,7 +123,6 @@ def main():
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
 
-
     torch.set_num_threads(1)
     device = torch.device("cuda" if algo_args.cuda else "cpu")
 
@@ -129,7 +141,6 @@ def main():
         plt.show()
     else:
         ax = None
-
 
     load_path=os.path.join(test_args.model_dir,'checkpoints', test_args.test_model)
     print(load_path)
@@ -163,38 +174,16 @@ def main():
         
         state_dict = torch.load(load_path, map_location=device)
         
-        if config.robot.policy == 'networks':
-            # Map standard keys to LoRA and rename old module names to new ones
+        # Map standard Linear to LoRA base_layer if LoRA is enabled
+        if hasattr(env_config, 'lora') and getattr(env_config.lora, 'use_lora', False):
             new_state_dict = {}
             model_state_dict = actor_critic.state_dict()
-            
-            # Translation map for old variable names to new ones
-            name_translation = {
-                "humanNodeRNN": "node_rnn",
-                "attn": "hr_attn",
-                "spatial_attn": "hh_attn",
-                "spatial_linear": "hh_out_proj",
-                "temporal_edge_layer": "robot_feature_proj",
-                "spatial_edge_layer": "human_feature_proj"
-            }
-
             for key, value in state_dict.items():
-                translated_key = key
-                # 1. Translate old module names to new ones recursively
-                for old_name, new_name in name_translation.items():
-                    if f".{old_name}." in translated_key:
-                        translated_key = translated_key.replace(f".{old_name}.", f".{new_name}.")
-                    elif translated_key.startswith(f"{old_name}."):
-                        translated_key = translated_key.replace(f"{old_name}.", f"{new_name}.", 1)
-
-                # 2. Map standard Linear to LoRA base_layer if LoRA is enabled
-                if hasattr(env_config, 'lora') and env_config.lora.use_lora:
-                    base_layer_key = translated_key.replace(".weight", ".base_layer.weight").replace(".bias", ".base_layer.bias")
-                    if base_layer_key in model_state_dict:
-                        new_state_dict[base_layer_key] = value
-                        continue
-                
-                new_state_dict[translated_key] = value
+                base_layer_key = key.replace(".weight", ".base_layer.weight").replace(".bias", ".base_layer.bias")
+                if base_layer_key in model_state_dict:
+                    new_state_dict[base_layer_key] = value
+                else:
+                    new_state_dict[key] = value
             actor_critic.load_state_dict(new_state_dict, strict=False)
         else:
             actor_critic.load_state_dict(state_dict)
@@ -202,20 +191,33 @@ def main():
         actor_critic.base.nenv = 1
         
         # Apply dynamic LoRA scale
-        from rl.networks.network_utils import LoRALinear
+        from rl.networks.network_utils import LoRALinear, LoRAAdapter
         for module in actor_critic.modules():
-            if isinstance(module, LoRALinear):
+            if isinstance(module, (LoRALinear, LoRAAdapter)):
                 module.dynamic_scale = test_args.lora_scale
-                logging.info(f"Set dynamic_scale for LoRALinear module to {test_args.lora_scale}")
+                logging.info(f"Set dynamic_scale for module to {test_args.lora_scale}")
+        
+        # Sync with environment for plotting
+        if hasattr(envs.venv, 'envs'):
+            envs.venv.envs[0].env.robot.lora_scale = test_args.lora_scale
+        else:
+            envs.venv.unwrapped.envs[0].env.robot.lora_scale = test_args.lora_scale
 
         # allow the usage of multiple GPUs to increase the number of examples processed simultaneously
         nn.DataParallel(actor_critic).to(device)
     else:
         actor_critic = None
 
-    test_size = 250#config.env.test_size
+    # Setup visualization save path if save_slides is enabled
+    video_save_path = None
+    if test_args.save_slides:
+        content = os.path.basename(model_dir_temp)
+        video_save_path = os.path.join("visualizations", content)
+        os.makedirs(video_save_path, exist_ok=True)
+        logging.info(f"Videos will be saved to {video_save_path}")
+
     # call the evaluation function
-    evaluate(actor_critic, envs, 1, device, test_size, logging, config, algo_args, model_dir_temp, test_args.visualize, test_args)
+    evaluate(actor_critic, envs, 1, device, test_args.test_size, logging, config, algo_args, model_dir_temp, test_args.visualize, test_args, video_save_path=video_save_path)
 
 
 if __name__ == '__main__':

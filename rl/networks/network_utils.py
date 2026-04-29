@@ -43,6 +43,34 @@ class LoRALinear(nn.Module):
         lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
         return result + lora_out
 
+class LoRAAdapter(nn.Module):
+    """
+    A LoRA adapter that can be applied to any tensor.
+    Useful for modules that don't easily allow wrapping internal layers.
+    """
+    def __init__(self, size, rank=8, lora_alpha=16, lora_dropout=0.0):
+        super(LoRAAdapter, self).__init__()
+        self.rank = rank
+        self.lora_alpha = lora_alpha
+        self.scaling = lora_alpha / rank
+        
+        # LoRA matrices
+        self.lora_A = nn.Parameter(torch.zeros((rank, size)))
+        self.lora_B = nn.Parameter(torch.zeros((size, rank)))
+        
+        self.lora_dropout = nn.Dropout(p=lora_dropout)
+        
+        # Initialization
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B)
+        
+        self.dynamic_scale = 1.0
+
+    def forward(self, x):
+        # Apply LoRA branch
+        lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+        return lora_out
+
 # Get a render function
 def get_render_func(venv):
 # ... existing code ...

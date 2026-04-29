@@ -15,6 +15,8 @@ class Config(object):
     network_related = BaseConfig()
     dataset = BaseConfig()
     policy = BaseConfig()
+    robot = BaseConfig()
+    lora = BaseConfig()
     #################### frequently tuned parameters ######################## 
     aci_related.considered_steps = 2
     aci_related.prediction_extra_buffer_size = 0.0
@@ -38,7 +40,14 @@ class Config(object):
     
     env.val_size = 100
     env.test_size = 500
-    note = f"LoraC_visi_invi"
+    # note = f"LoraC_visi_invi"
+    note = f"LoraE_visi_invi_rank1"
+    # whether robot is visible to humans (whether humans respond to the robot's motion)
+    robot.visible = False # tag: 05/02/2024
+    # LoRA config
+    lora.rank = 1
+    lora.alpha = 128
+    lora.use_lora = True
     #################### unfrequently tuned ######################## 
     aggressiveness_factor = 0.0 # unused for now
     reward.intrusion_start_dist = 0.50 # unused
@@ -107,7 +116,7 @@ class Config(object):
 
     # a human may change its goal before it reaches its old goal
     # if randomize human behaviors, set to True, else set to False
-    humans.random_goal_changing = True
+    humans.random_goal_changing = False
     humans.goal_change_chance = 0.5
 
     # a human may change its goal after it reaches its old goal
@@ -125,9 +134,6 @@ class Config(object):
     humans.random_policy_changing = False
 
     # robot config
-    robot = BaseConfig()
-    # whether robot is visible to humans (whether humans respond to the robot's motion)
-    robot.visible = False # tag: 05/02/2024
     # For baseline: srnn; our method: selfAttn_merge_srnn
     robot.policy = 'selfAttn_merge_srnn' #'networks', 'selfAttn_merge_srnn'
     robot.radius = 0.3
@@ -190,11 +196,6 @@ class Config(object):
     sim2real.fixed_time_interval = 0.1
     sim2real.use_fixed_time_interval = True
 
-    # LoRA config
-    lora = BaseConfig()
-    lora.use_lora = True
-    lora.rank = 8
-    lora.alpha = 1024
 
     if sim.predict_method == 'inferred' and env.use_wrapper == False:
         raise ValueError("If using inferred prediction, you must wrap the envs!")

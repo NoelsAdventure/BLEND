@@ -615,7 +615,14 @@ class CrowdSim(gym.Env):
                     else:
                         ob.append(self.dummy_human.get_observable_state())
 
-            if self.robot.visible:
+            # Check if robot is visible to this specific human
+            is_visible = False
+            if hasattr(self.robot, 'visible_to_humans'):
+                is_visible = self.robot.visible_to_humans[i]
+            else:
+                is_visible = self.robot.visible
+
+            if is_visible:
                 if self.detect_visible(self.humans[i], self.robot):
                     ob += [self.robot.get_observable_state()]
                 else:
@@ -678,7 +685,16 @@ class CrowdSim(gym.Env):
 
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 
-        robot_color = 'yellow'
+        # Robot color: red when aggressive (lora_scale = 1), yellow when conservative (lora_scale = 0)
+        # Gradually change depending on the lora scale
+        if hasattr(self.robot, 'lora_scale'):
+            scale = np.clip(self.robot.lora_scale, 0, 1)
+            robot_color = (1.0, 1.0 - scale, 0.0)
+        elif hasattr(self.robot, 'lora_enabled') and self.robot.lora_enabled:
+            robot_color = 'red'
+        else:
+            robot_color = 'yellow'
+            
         goal_color = 'red'
         arrow_color = 'red'
         arrow_style = patches.ArrowStyle("->", head_length=4, head_width=2)
@@ -775,11 +791,18 @@ class CrowdSim(gym.Env):
             ax.add_artist(human_circles[i])
             artists.append(human_circles[i])
 
-            # green: visible; red: invisible
-            if self.detect_visible(self.robot, self.humans[i], robot1=True):
+            # Check if robot is visible to this specific human (Friendly vs Ignorant)
+            is_visible = False
+            if hasattr(self.robot, 'visible_to_humans'):
+                is_visible = self.robot.visible_to_humans[i]
+            else:
+                is_visible = self.robot.visible
+
+            # Green: Friendly (can see robot); Blue: Ignorant (cannot see robot)
+            if is_visible:
                 human_circles[i].set_color(c='g')
             else:
-                human_circles[i].set_color(c='r')
+                human_circles[i].set_color(c='b')
 
             # label numbers on each human
             # plt.text(self.humans[i].px - 0.1, self.humans[i].py - 0.1, str(self.humans[i].id), color='black', fontsize=12)

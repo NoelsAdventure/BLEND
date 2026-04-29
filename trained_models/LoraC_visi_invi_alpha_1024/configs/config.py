@@ -39,6 +39,12 @@ class Config(object):
     env.val_size = 100
     env.test_size = 500
     note = f"LoraC_visi_invi"
+    # note = f"Fulltune_random_visi"
+    # whether robot is visible to humans (whether humans respond to the robot's motion)
+    robot = BaseConfig()
+    lora = BaseConfig()
+    robot.visible = False # tag: 05/02/2024
+    lora.use_lora = True
     #################### unfrequently tuned ######################## 
     aggressiveness_factor = 0.0 # unused for now
     reward.intrusion_start_dist = 0.50 # unused
@@ -107,7 +113,7 @@ class Config(object):
 
     # a human may change its goal before it reaches its old goal
     # if randomize human behaviors, set to True, else set to False
-    humans.random_goal_changing = True
+    humans.random_goal_changing = False
     humans.goal_change_chance = 0.5
 
     # a human may change its goal after it reaches its old goal
@@ -125,9 +131,6 @@ class Config(object):
     humans.random_policy_changing = False
 
     # robot config
-    robot = BaseConfig()
-    # whether robot is visible to humans (whether humans respond to the robot's motion)
-    robot.visible = False # tag: 05/02/2024
     # For baseline: srnn; our method: selfAttn_merge_srnn
     robot.policy = 'selfAttn_merge_srnn' #'networks', 'selfAttn_merge_srnn'
     robot.radius = 0.3
@@ -191,8 +194,6 @@ class Config(object):
     sim2real.use_fixed_time_interval = True
 
     # LoRA config
-    lora = BaseConfig()
-    lora.use_lora = True
     lora.rank = 8
     lora.alpha = 1024
 

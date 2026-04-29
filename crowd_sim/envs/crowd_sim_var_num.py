@@ -142,6 +142,7 @@ class CrowdSimVarNum(CrowdSim):
     # generate a human that starts on a circle, and its goal is on the opposite side of the circle
     def generate_circle_crossing_human(self):
         human = Human(self.config, 'humans')
+        human.id = -1
         if self.randomize_attributes:
             human.sample_random_attributes()
 
@@ -343,14 +344,8 @@ class CrowdSimVarNum(CrowdSim):
         
         if self.phase is not None:
             phase = self.phase
-        if self.test_case is not None:
-            test_case=self.test_case
-
-        if self.robot is None:
-            raise AttributeError('robot has to be set!')
-        assert phase in ['train', 'val', 'test']
         if test_case is not None:
-            self.case_counter[phase] = test_case # test case is passed in to calculate specific seed to generate case
+            self.case_counter[phase] = test_case
         self.global_time = 0
         self.step_counter = 0
         self.id_counter = 0
@@ -368,6 +363,17 @@ class CrowdSimVarNum(CrowdSim):
         np.random.seed(self.rand_seed)
 
         self.generate_robot_humans(phase)
+        
+        for agent in [self.robot] + self.humans:
+            agent.time_step = self.time_step
+            agent.policy.time_step = self.time_step
+
+
+        # Initialize robot path tracking with the correct starting position
+        self.robot_path = []
+        self.cumulative_path_length = 0.0
+        if self.robot is not None:
+            self.robot_path.append(self.robot.get_position())
 
         # record px, py, r of each human, used for crowd_sim_pc env
         self.cur_human_states = np.zeros((self.max_human_num, 3))
@@ -554,11 +560,23 @@ class CrowdSimVarNum(CrowdSim):
     def plot_scenario(self, alert_agent_id, save_path):
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 
-        robot_color = "#ffd079"
+        # Robot color: red when aggressive (lora_scale = 1), yellow when conservative (lora_scale = 0)
+        # Gradually change depending on the lora scale
+        if hasattr(self.robot, 'lora_scale'):
+            scale = np.clip(self.robot.lora_scale, 0, 1)
+            robot_color = (1.0, 1.0 - scale, 0.0)
+        elif hasattr(self.robot, 'lora_enabled') and self.robot.lora_enabled:
+            robot_color = 'red'
+        else:
+            robot_color = 'yellow'
+            
         goal_color = '#f56200'
         arrow_color_robot = "#ff6600"
         arrow_color_human = '#073f93'
-        human_color = '#96cbfd'
+        
+        aware_color = 'g' # Green
+        ignore_color = 'b' # Blue
+        
         buffer_color = '#bee7fa'
         buffer_alpha_near = 0.6
         buffer_alpha_away = 0.2
@@ -581,6 +599,20 @@ class CrowdSimVarNum(CrowdSim):
         ax.set_xticks([])  # Hide x-axis numbers
         ax.set_yticks([])  # Hide y-axis numbers
         artists = []
+
+        # Plot robot trail
+        if hasattr(self, 'robot_path') and len(self.robot_path) > 1:
+            path_x, path_y = zip(*self.robot_path)
+            trail = mlines.Line2D(path_x, path_y, color=robot_color, linestyle=':', alpha=0.5, linewidth=1)
+            ax.add_artist(trail)
+            artists.append(trail)
+
+        # Display Path Length and LoRA Scale on top left
+        info_text = f"Path Length: {self.cumulative_path_length:.2f}m"
+        if hasattr(self.robot, 'lora_scale'):
+            info_text += f"\nLoRA Scale: {self.robot.lora_scale:.2f}"
+        
+        ax.text(-9.5, 9.5, info_text, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
         sensor_range = plt.Circle(self.robot.get_position(), self.robot.sensor_range + self.robot.radius + self.config.humans.radius, fill=False, color=range_color, linestyle='--')
         ax.add_artist(sensor_range)
@@ -643,10 +675,19 @@ class CrowdSimVarNum(CrowdSim):
         for i in range(len(self.humans)):
             ax.add_artist(human_circles[i])
             artists.append(human_circles[i])
-            if self.human_visibility[i]:
-                human_circles[i].set_color(c=human_color)
+            
+            # Check if robot is visible to this specific human (Friendly vs Ignorant)
+            is_visible = False
+            if hasattr(self.robot, 'visible_to_humans'):
+                is_visible = self.robot.visible_to_humans[i]
             else:
-                human_circles[i].set_color(c=human_color)
+                is_visible = self.robot.visible
+
+            # Green: Friendly (can see robot); Blue: Ignorant (cannot see robot)
+            if is_visible:
+                human_circles[i].set_color(c=aware_color)
+            else:
+                human_circles[i].set_color(c=ignore_color)
 
         arrowStartEnd = []
         robot_theta = self.robot.theta if self.robot.kinematics == 'unicycle' else np.arctan2(self.robot.vy, self.robot.vx)

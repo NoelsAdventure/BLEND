@@ -121,13 +121,28 @@ if __name__ == "__main__":
     model_configs = []
     
     # You can also manually define models to plot here:
+    # model_configs = [
+    #     {'path': 'trained_models/ours_gst_visible_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (random:visi)'},
+    #     {'path': 'trained_models/Ours_GST', 'name': 'Fulltune (random:invi)'},
+    #     {'path': 'trained_models/Fulltune_visi_invi_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (visi:invi)'},
+    #     {'path': 'trained_models/LoraC_visi_invi_alpha_1024', 'name': 'LoraA (visi:invi)'},
+    #     {'path': 'trained_models/LORA_visi_invi_alpha_1024', 'name': 'LoraB (visi:invi)'},
+    #     {'path': 'trained_models/LoraB_visi_invi_alpha_1024', 'name': 'LoraC (visi:invi)'},
+    # ]
+
+    # model_configs = [
+    #     {'path': 'trained_models/ours_gst_visible_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Old'},
+    #     {'path': 'trained_models/Fulltune_random_visi_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (visi:invi)'},
+    #     {'path': 'trained_models/Fulltune_random_visi_seed_42', 'name': 'New'},
+    #     {'path': 'trained_models/LoraC_visi_invi_seed_42', 'name': 'New'},
+    # ]
+
+
     model_configs = [
-        {'path': 'trained_models/ours_gst_visible_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (random:visi)'},
-        {'path': 'trained_models/Ours_GST', 'name': 'Fulltune (random:invi)'},
-        {'path': 'trained_models/Fulltune_visi_invi_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (visi:invi)'},
-        {'path': 'trained_models/LoraC_visi_invi_alpha_1024', 'name': 'LoraA (visi:invi)'},
-        {'path': 'trained_models/LORA_visi_invi_alpha_1024', 'name': 'LoraB (visi:invi)'},
-        {'path': 'trained_models/LoraB_visi_invi_alpha_1024', 'name': 'LoraC (visi:invi)'},
+        {'path': 'trained_models/LoraE_visi_invi_alpha_1024', 'name': '1'},
+        {'path': 'trained_models/LoraE_invi_visi_alpha_128', 'name': '1'},
+        {'path': 'trained_models/LoraD_visi_invi_alpha_1024', 'name': '32'},
+        {'path': 'trained_models/Fulltune_random_visi_alpha_1024', 'name': '1024'},
     ]
 
     if args.dirs:

@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import pandas as pd
 import wandb
+from tqdm import tqdm
 
 from rl import ppo
 from rl.networks import network_utils
@@ -36,7 +37,7 @@ def main():
         model_name = f"{env_config.note}_alpha_{env_config.lora.alpha}"
     else:
         # Keep original naming for standard models
-        model_name = f"{env_config.note}_seed_{algo_args.seed}_curr_buffer_{env_config.aci_related.current_position_buffer}_c_l_{env_config.constrained_rl_related.cost_limit}_clip_param_{algo_args.clip_param}_considered_steps_{env_config.aci_related.considered_steps}_alpha_{env_config.aci_related.alpha}_noise_{env_config.aci_related.noise_clip_for_conformity_scores}_{env_config.aci_related.noise_clip_for_cost}"
+        model_name = f"{env_config.note}"
         
     env_config.model_name = model_name
     algo_args.output_dir = f"trained_models/{model_name}"
@@ -104,6 +105,16 @@ def main():
         base_kwargs=algo_args,
         base=config.robot.policy)
 
+    # Function to calculate and print parameters
+    def print_parameter_count(model, name):
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"[{name}] Total Parameters: {total_params:,}")
+        print(f"[{name}] Trainable Parameters: {trainable_params:,} ({100 * trainable_params / total_params:.2f}%)")
+
+    print_parameter_count(actor_critic, "Actor-Critic")
+    print_parameter_count(cost_actor_critic, "Cost-Critic")
+
     # Initialize rollout storage buffer for collecting experience
     rollouts = RolloutStorage(algo_args.num_steps,
                               algo_args.num_processes,
@@ -118,47 +129,34 @@ def main():
         print(f"Loading weights from {load_path}")
         state_dict = torch.load(load_path, map_location=device)
         
-        # Map standard keys to LoRA and rename old module names to new ones
-        new_state_dict = {}
-        model_state_dict = actor_critic.state_dict()
-        
-        # Translation map for old variable names to new ones
-        # Keys are old patterns, values are new patterns
-        name_translation = {
-            "humanNodeRNN": "node_rnn",
-            "attn": "hr_attn",
-            "spatial_attn": "hh_attn",
-            "spatial_linear": "hh_out_proj",
-            "temporal_edge_layer": "robot_feature_proj",
-            "spatial_edge_layer": "human_feature_proj"
-        }
-
-        for key, value in state_dict.items():
-            translated_key = key
-            # 1. Translate old module names to new ones recursively
-            # We use a loop to replace all occurrences of old names in the key
-            for old_name, new_name in name_translation.items():
-                if f".{old_name}." in translated_key:
-                    translated_key = translated_key.replace(f".{old_name}.", f".{new_name}.")
-                elif translated_key.startswith(f"{old_name}."):
-                    translated_key = translated_key.replace(f"{old_name}.", f"{new_name}.", 1)
-
-            # 2. Map standard Linear to LoRA base_layer if LoRA is enabled
-            if hasattr(env_config, 'lora') and env_config.lora.use_lora:
-                base_layer_key = translated_key.replace(".weight", ".base_layer.weight").replace(".bias", ".base_layer.bias")
+        # Map standard Linear to LoRA base_layer if LoRA is enabled
+        if hasattr(env_config, 'lora') and env_config.lora.use_lora:
+            new_state_dict = {}
+            model_state_dict = actor_critic.state_dict()
+            for key, value in state_dict.items():
+                base_layer_key = key.replace(".weight", ".base_layer.weight").replace(".bias", ".base_layer.bias")
                 if base_layer_key in model_state_dict:
                     new_state_dict[base_layer_key] = value
-                    continue
-            
-            # Use translated key (or original if no LoRA mapping was found/needed)
-            new_state_dict[translated_key] = value
-            
-        state_dict = new_state_dict
+                else:
+                    new_state_dict[key] = value
+            state_dict = new_state_dict
 
-        # Load mapped weights into both networks (both now use LoRA)
+        # Load weights into both networks
         actor_critic.load_state_dict(state_dict, strict=False)
         cost_actor_critic.load_state_dict(state_dict, strict=False)
         print("Weights loaded successfully into both networks.")
+
+    # Explicitly freeze all parameters except LoRA before passing to optimizer
+    if hasattr(env_config, 'lora') and getattr(env_config.lora, 'use_lora', False):
+        for model in [actor_critic, cost_actor_critic]:
+            trainable_params = []
+            for name, param in model.named_parameters():
+                if 'lora_' not in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+                    trainable_params.append(name)
+            print(f"LoRA mode: {len(trainable_params)} parameters are trainable in {model.__class__.__name__}")
 
     # Move networks to GPU if available
     nn.DataParallel(actor_critic).to(device)
@@ -256,7 +254,8 @@ def main():
                                                // algo_args.num_processes
 
     # Main training loop
-    for j in range(num_updates):
+    pbar = tqdm(range(num_updates), desc=model_name)
+    for j in pbar:
         # Schedule learning rate decay if enabled
         if algo_args.use_linear_lr_decay:
             network_utils.update_linear_schedule(
@@ -447,6 +446,20 @@ def main():
 
         rollouts.after_update()
         
+        # Update progress bar postfix with latest metrics
+        sr = np.mean(episode_success) if len(episode_success) > 0 else 0
+        cr = np.mean(episode_collisions) if len(episode_collisions) > 0 else 0
+        pl = np.mean(episode_path_length) if len(episode_path_length) > 0 else 0
+        rew = np.mean(episode_rewards) if len(episode_rewards) > 0 else 0
+        cost = np.mean(episode_costs) if len(episode_costs) > 0 else 0
+        pbar.set_postfix({
+            'SR': f'{sr:.2f}',
+            'CR': f'{cr:.2f}',
+            'PL': f'{pl:.2f}',
+            'Rew': f'{rew:.2f}',
+            'Cost': f'{cost:.2f}'
+        })
+
         # Log training metrics
         if algo_args.use_wandb:
             train_iter += 1
@@ -486,7 +499,7 @@ def main():
             total_num_steps = (j + 1) * algo_args.num_processes * algo_args.num_steps
             end = time.time()
 
-            print(
+            pbar.write(
                 "Updates {}, num timesteps {}, FPS {} \n"
                 "Last {} training episodes: mean/median reward {:.1f}/{:.1f}, "
                 "mean/median cost {:.1f}/{:.1f}, "
@@ -503,7 +516,7 @@ def main():
                     np.max(episode_rewards)
                 )
             )
-            print(f"Collision rate: {np.mean(episode_collisions):.2f}, Success rate: {np.mean(episode_success):.2f}, Path length: {np.mean(episode_path_length):.2f}")
+            pbar.write(f"Collision rate: {np.mean(episode_collisions):.2f}, Success rate: {np.mean(episode_success):.2f}, Path length: {np.mean(episode_path_length):.2f}")
 
             # Save training progress to CSV
             df = pd.DataFrame({'misc/nupdates': [j],

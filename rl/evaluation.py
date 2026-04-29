@@ -9,7 +9,7 @@ import uuid
 from crowd_sim.envs.utils.info import *
 
 
-def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False, test_args=None):
+def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False, test_args=None, video_save_path=None):
     """ function to run all testing episodes and log the testing metrics """
     # initializations
     eval_episode_rewards = []
@@ -54,6 +54,16 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         baseEnv = eval_envs.venv.unwrapped.envs[0].env
     time_limit = baseEnv.time_limit
 
+        # Experiment ID logic (moved up for video saving)
+    exp_id = getattr(test_args, 'exp_id', None)
+    if exp_id is None:
+        scenario = getattr(test_args, 'adaptive_lora_scenario', 'none')
+        behaviour = getattr(test_args, 'lora_behaviour', 'none')
+        if scenario != 'none' or behaviour != 'none':
+            exp_id = f"{scenario}_{behaviour}"
+        else:
+            exp_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
+
     # start the testing episodes
     for k in range(test_size):
         baseEnv.episode_k = k
@@ -89,8 +99,123 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             eval_recurrent_hidden_states['human_human_edge_rnn'] = torch.zeros(num_processes, edge_num,
                                                                             actor_critic.base.human_human_edge_rnn_size,
                                                                             device=device)
+        
+        # Adaptive LoRA Proof of Concept: Initialization
+        scenario = getattr(test_args, 'adaptive_lora_scenario', 'none')
+        behaviour = getattr(test_args, 'lora_behaviour', 'none')
+        
+        # Default lora_scale from args
+        baseEnv.robot.lora_scale = getattr(test_args, 'lora_scale', 1.0)
+
+        # Clean up any leftover PoC attributes from previous episodes
+        if hasattr(baseEnv.robot, 'visible_to_humans'):
+            delattr(baseEnv.robot, 'visible_to_humans')
+
+        # Behaviour Overrides
+        if behaviour == 'always_on':
+            baseEnv.robot.lora_enabled = True
+            baseEnv.robot.lora_scale = 1.0
+            from rl.networks.network_utils import LoRALinear, LoRAAdapter
+            for module in actor_critic.modules():
+                if isinstance(module, (LoRALinear, LoRAAdapter)):
+                    module.dynamic_scale = 1.0
+        elif behaviour == 'always_off':
+            baseEnv.robot.lora_enabled = False
+            baseEnv.robot.lora_scale = 0.0
+            from rl.networks.network_utils import LoRALinear, LoRAAdapter
+            for module in actor_critic.modules():
+                if isinstance(module, (LoRALinear, LoRAAdapter)):
+                    module.dynamic_scale = 0.0
+            
+        if scenario == 'seperate_mixed_5050':
+            # One group (half) is ignorant (False), the other is friendly (True)
+            baseEnv.robot.visible_to_humans = [False if i < len(baseEnv.humans)//2 else True 
+                                               for i in range(len(baseEnv.humans))]
+            print(f"Group scenario: {sum(not v for v in baseEnv.robot.visible_to_humans)} ignorant, {sum(baseEnv.robot.visible_to_humans)} friendly")
+            
+            # For visualization of baseline models in group scenario
+            baseEnv.robot.lora_enabled = "lora" in model_dir.lower() or "alpha" in model_dir.lower()
+
+        elif scenario == 'seperate_ignorant_to_aware_step25':
+            # Start invisible (Ignorant humans)
+            baseEnv.robot.visible = False
+            
+            # Start with LoRA OFF (if switching)
+            if behaviour == 'switching':
+                baseEnv.robot.lora_enabled = False
+                baseEnv.robot.lora_scale = 0.0
+                from rl.networks.network_utils import LoRALinear, LoRAAdapter
+                for module in actor_critic.modules():
+                    if isinstance(module, (LoRALinear, LoRAAdapter)):
+                        module.dynamic_scale = 0.0
+
+        elif scenario == 'seperate_all_ignorant':
+            baseEnv.robot.visible = False
+            if behaviour == 'switching':
+                baseEnv.robot.lora_enabled = False
+                baseEnv.robot.lora_scale = 0.0
+                from rl.networks.network_utils import LoRALinear, LoRAAdapter
+                for module in actor_critic.modules():
+                    if isinstance(module, (LoRALinear, LoRAAdapter)):
+                        module.dynamic_scale = 0.0
+
+        elif scenario == 'seperate_all_aware':
+            baseEnv.robot.visible = True
+            if behaviour == 'switching':
+                baseEnv.robot.lora_enabled = True
+                baseEnv.robot.lora_scale = 1.0
+                from rl.networks.network_utils import LoRALinear, LoRAAdapter
+                for module in actor_critic.modules():
+                    if isinstance(module, (LoRALinear, LoRAAdapter)):
+                        module.dynamic_scale = 1.0
+
+        episode_steps = []
         while not done:
             stepCounter = stepCounter + 1
+            
+            # Adaptive LoRA Proof of Concept: Mid-episode switch for 'seperate_ignorant_to_aware_step25' scenario
+            if scenario == 'seperate_ignorant_to_aware_step25' and stepCounter == 25:
+                baseEnv.robot.visible = True
+                if behaviour == 'switching':
+                    print(f"\n>>> Step {stepCounter}: Switching to VISIBLE and LoRA ON (Adaptive PoC)")
+                    baseEnv.robot.lora_scale = 1.0
+                        
+                    from rl.networks.network_utils import LoRALinear, LoRAAdapter
+                    for module in actor_critic.modules():
+                        if isinstance(module, (LoRALinear, LoRAAdapter)):
+                            module.dynamic_scale = 1.0
+            
+            # Collect data for the CURRENT step before taking the next action
+            # Robot features in robot_node: [px, py, radius, gx, gy, v_pref, theta]
+            # Robot features in temporal_edges: [vx, vy]
+            r_node = obs['robot_node'][0, 0].cpu().numpy()
+            r_vel = obs['temporal_edges'][0, 0].cpu().numpy()
+            
+            # Current human states
+            human_states = []
+            for h in baseEnv.humans:
+                human_states.append({
+                    'id': int(h.id),
+                    'pos': [float(h.px), float(h.py)],
+                    'vel': [float(h.vx), float(h.vy)],
+                    'radius': float(h.radius)
+                })
+
+            step_data = {
+                'step': stepCounter,
+                'robot': {
+                    'pos': [float(r_node[0]), float(r_node[1])],
+                    'vel': [float(r_vel[0]), float(r_vel[1])],
+                    'goal': [float(r_node[3]), float(r_node[4])],
+                    'theta': float(r_node[6]),
+                    'radius': float(r_node[2])
+                },
+                'humans': human_states,
+                'pred_traj': out_pred.tolist(),
+                'uncertainty': aci_predicted_conformity_scores[0].tolist() if aci_predicted_conformity_scores is not None else None
+            }
+            episode_steps.append(step_data)
+
             if config.robot.policy not in ['orca', 'social_force']:
                 # run inference on the NN policy
                 with torch.no_grad():
@@ -107,6 +232,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # if the vec_pretext_normalize.py wrapper is used, send the predicted traj to env
             if visualize:
                 eval_envs.render()
+                if video_save_path:
+                    baseEnv.plot_step(video_save_path)
 
             # Obser reward and next obs
             obs, rew, done, infos = eval_envs.step(action)
@@ -184,10 +311,14 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             'steps': stepCounter,
             'time': float(global_time),
             'path_length': float(path_len),
-            'avg_uncertainty': float(avg_uncertainty)
+            'avg_uncertainty': float(avg_uncertainty),
+            'steps_data': episode_steps
         })
 
         print(f"current SR: {success/(k+1)}; current CR: {collision/(k+1)}")
+
+        if video_save_path:
+            baseEnv.animate_episode(video_save_path, f"{exp_id}_ep{k}_{episode_result}")
 
     # all episodes end
     success_rate = success / test_size
@@ -208,35 +339,31 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
     logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
     
-    # JSON logic
-    json_file_path = os.path.join(model_dir, 'test', 'all_evaluations.json')
-    all_data = {}
-    if os.path.exists(json_file_path):
-        try:
-            with open(json_file_path, 'r') as f:
-                all_data = json.load(f)
-        except Exception as e:
-            logging.error(f"Error reading existing JSON: {e}")
-            all_data = {}
-
+    # JSON logic: Save a summary to the main file and full data to a unique experiment file
     lora_scale = getattr(test_args, 'lora_scale', 1.0)
-    exp_id = getattr(test_args, 'exp_id', None)
-    if exp_id is None:
-        exp_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
+    
+    # Detailed config for the experiment
+    important_config = {
+        'robot_visible': config.robot.visible,
+        'robot_fov': float(config.robot.FOV),
+        'human_num': int(config.sim.human_num),
+        'human_random': config.env.randomize_attributes,
+        'human_fov': float(config.humans.FOV),
+        'env_name': args.env_name,
+        'use_lora': getattr(getattr(config, 'lora', object()), 'use_lora', False),
+        'lora_alpha': getattr(getattr(config, 'lora', object()), 'alpha', None),
+        'lora_rank': getattr(getattr(config, 'lora', object()), 'rank', None),
+        'lora_scale': lora_scale,
+        'test_model': getattr(test_args, 'test_model', None),
+        'model_dir': model_dir
+    }
 
-    new_entry = {
+    full_experiment_data = {
+        'exp_id': exp_id,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'config': {
-            'robot_visible': config.robot.visible,
-            'human_random': config.env.randomize_attributes,
-            'use_lora': getattr(config.lora, 'use_lora', False),
-            'lora_alpha': getattr(config.lora, 'alpha', None),
-            'lora_rank': getattr(config.lora, 'rank', None),
-            'lora_scale': lora_scale,
-            'test_model': getattr(test_args, 'test_model', None),
-            'model_dir': model_dir
-        },
+        'config': important_config,
         'summary': {
+            'num_episodes': int(test_size),
             'success_rate': float(success_rate),
             'collision_rate': float(collision_rate),
             'timeout_rate': float(timeout_rate),
@@ -247,10 +374,31 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         'episodes': episodes_data
     }
     
-    all_data[exp_id] = new_entry
+    # 1. Save FULL data for THIS experiment
+    individual_json_path = os.path.join(model_dir, 'test', f'{exp_id}.json')
+    with open(individual_json_path, 'w') as f:
+        json.dump(full_experiment_data, f, indent=4)
+    logging.info(f"Full experiment data saved to {individual_json_path}")
+
+    # 2. Update/Create summary index of ALL experiments
+    summary_json_path = os.path.join(model_dir, 'test', 'all_evaluations.json')
+    all_summaries = {}
+    if os.path.exists(summary_json_path):
+        try:
+            with open(summary_json_path, 'r') as f:
+                all_summaries = json.load(f)
+        except Exception:
+            all_summaries = {}
+
+    # Create a lightweight entry for the master index
+    summary_entry = full_experiment_data.copy()
+    del summary_entry['episodes'] # Remove heavy data for the index
+    summary_entry['data_file'] = f'{exp_id}.json'
     
-    with open(json_file_path, 'w') as f:
-        json.dump(all_data, f, indent=4)
+    all_summaries[exp_id] = summary_entry
+    
+    with open(summary_json_path, 'w') as f:
+        json.dump(all_summaries, f, indent=4)
     
     # Keep CSV for backward compatibility (per-run)
     csv_file_path = os.path.join(model_dir, 'test', f'evaluation_data_scale_{lora_scale}.csv')

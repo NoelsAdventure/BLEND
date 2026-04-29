@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 
 from .srnn_model import *
-from .network_utils import LoRALinear
+from .network_utils import LoRALinear, LoRAAdapter
 
 class SpatialEdgeSelfAttn(nn.Module):
     """
@@ -33,6 +33,15 @@ class SpatialEdgeSelfAttn(nn.Module):
 
         # multi-head self attention
         self.multihead_attn=torch.nn.MultiheadAttention(self.attn_size, self.num_attn_heads)
+
+        # Add LoRA to the Q, K, V projections and the MHA out_proj
+        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
+            self.q_linear = LoRALinear(self.q_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            self.k_linear = LoRALinear(self.k_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            self.v_linear = LoRALinear(self.v_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            
+            # Use a LoRA adapter for the MultiheadAttention output to avoid AttributeErrors
+            self.multihead_attn_adapter = LoRAAdapter(self.attn_size, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
 
 
     # Given a list of sequence lengths, create a mask to indicate which indices are padded
@@ -79,6 +88,11 @@ class SpatialEdgeSelfAttn(nn.Module):
 
         #z=self.multihead_attn(q, k, v, mask=attn_mask)
         z,_=self.multihead_attn(q, k, v, key_padding_mask=torch.logical_not(attn_mask)) # if we use pytorch builtin function
+        
+        # Apply LoRA adapter to the attention output if enabled
+        if hasattr(self, 'multihead_attn_adapter'):
+            z = z + self.multihead_attn_adapter(z)
+            
         z=torch.transpose(z, dim0=0, dim1=1) # if we use pytorch builtin function
         return z
 
@@ -226,16 +240,17 @@ class EndRNN(RNNBase):
     '''
     Class for the GRU
     '''
-    def __init__(self, args):
+    def __init__(self, args, config):
         '''
         Initializer function
         params:
         args : Training arguments
-        infer : Training or test time (True at test time)
+        config : Configuration object
         '''
         super(EndRNN, self).__init__(args, edge=False)
 
         self.args = args
+        self.config = config
 
         # Store required sizes
         self.rnn_size = args.human_node_rnn_size
@@ -253,9 +268,13 @@ class EndRNN(RNNBase):
         # Linear layer to embed attention module output
         self.edge_attention_embed = nn.Linear(self.edge_rnn_size, self.embedding_size)
 
-
         # Output linear layer
         self.output_linear = nn.Linear(self.rnn_size, self.output_size)
+
+        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
+            self.encoder_linear = LoRALinear(self.encoder_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            self.edge_attention_embed = LoRALinear(self.edge_attention_embed, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            self.output_linear = LoRALinear(self.output_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
 
 
 
@@ -314,7 +333,7 @@ class selfAttn_merge_SRNN(nn.Module):
         self.output_size = args.human_node_output_size
 
         # Initialize the Node and Edge RNNs
-        self.humanNodeRNN = EndRNN(args)
+        self.humanNodeRNN = EndRNN(args, self.config)
 
         # Initialize attention module
         self.attn = EdgeAttention_M(args, self.config)
@@ -345,11 +364,19 @@ class selfAttn_merge_SRNN(nn.Module):
             critic_l1, nn.Tanh(),
             critic_l2, nn.Tanh())
 
-
-        self.critic_linear = init_(nn.Linear(hidden_size, 1))
+        critic_linear_layer = init_(nn.Linear(hidden_size, 1))
         robot_size = 9
-        self.robot_linear = nn.Sequential(init_(nn.Linear(robot_size, 256)), nn.ReLU()) # todo: check dim
-        self.human_node_final_linear=init_(nn.Linear(self.output_size,2))
+        robot_linear_layer = init_(nn.Linear(robot_size, 256))
+        human_node_final_linear_layer = init_(nn.Linear(self.output_size, 2))
+
+        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
+            critic_linear_layer = LoRALinear(critic_linear_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            robot_linear_layer = LoRALinear(robot_linear_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+            human_node_final_linear_layer = LoRALinear(human_node_final_linear_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
+
+        self.critic_linear = critic_linear_layer
+        self.robot_linear = nn.Sequential(robot_linear_layer, nn.ReLU()) # todo: check dim
+        self.human_node_final_linear = human_node_final_linear_layer
 
         if self.args.use_self_attn:
             self.spatial_attn = SpatialEdgeSelfAttn(args, self.config)

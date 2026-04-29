@@ -1,11 +1,12 @@
-2026-04-21 16:56:42, INFO: robot FOV 2.000000
-2026-04-21 16:56:42, INFO: humans FOV 2.000000
-2026-04-21 16:56:42, INFO: Create other envs with new settings
-2026-04-21 16:56:42, INFO: human number: 20
-2026-04-21 16:56:42, INFO: Randomize human's radius and preferred speed
-2026-04-21 16:56:42, INFO: Circle width: 8.485281374238571
-2026-04-21 16:56:42, INFO: robot FOV 6.283185
-2026-04-21 16:56:42, INFO: humans FOV 6.283185
-2026-04-21 17:00:43, INFO: Testing success rate: 0.5480, collision rate: 0.4520, timeout rate: 0.0000, nav time: 11.5164, path length: 16.5671, average intrusion ratio: 13.0168%, average minimal distance during intrusions: 0.4142, average prediction uncertainty: 0.1428
-2026-04-21 17:00:43, INFO: Collision cases: 0 3 8 9 11 13 14 15 19 21 22 24 25 26 27 28 30 31 32 33 36 39 40 41 43 47 48 49 51 56 63 64 65 66 67 68 70 77 79 80 82 83 84 87 89 90 94 96 98 99 100 101 105 106 107 108 110 111 112 113 114 115 116 117 119 122 126 127 129 131 132 134 137 139 141 146 147 154 155 156 162 168 169 171 172 178 180 181 191 195 196 197 199 200 205 206 211 213 216 218 219 220 225 226 229 233 234 237 242 244 245 247 248
-2026-04-21 17:00:43, INFO: Timeout cases: 
+2026-04-27 14:01:48, INFO: robot FOV 2.000000
+2026-04-27 14:01:48, INFO: humans FOV 2.000000
+2026-04-27 14:01:48, INFO: Create other envs with new settings
+2026-04-27 14:01:48, INFO: human number: 20
+2026-04-27 14:01:48, INFO: Randomize human's radius and preferred speed
+2026-04-27 14:01:48, INFO: Circle width: 8.485281374238571
+2026-04-27 14:01:48, INFO: robot FOV 6.283185
+2026-04-27 14:01:48, INFO: humans FOV 6.283185
+2026-04-27 14:11:19, INFO: Testing success rate: 0.9000, collision rate: 0.1000, timeout rate: 0.0000, nav time: 11.8322, path length: 18.4356, average intrusion ratio: 10.9908%, average minimal distance during intrusions: 0.4098, average prediction uncertainty: 0.1458
+2026-04-27 14:11:19, INFO: Collision cases: 0 1 8 11 15 19 22 26 27 64 80 87 99 105 107 110 111 116 169 178 191 197 220 225 229 250 251 258 261 265 269 272 276 277 314 330 337 349 355 357 360 361 366 419 428 441 447 470 475 479
+2026-04-27 14:11:19, INFO: Timeout cases: 
+2026-04-27 14:11:27, INFO: Full experiment data saved to trained_models/ours_gst_visible_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0/test/Baseline_Visi_Separate_500.json

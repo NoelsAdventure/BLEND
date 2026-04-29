@@ -1,90 +1,84 @@
-
 import json
 import matplotlib.pyplot as plt
 import os
 import numpy as np
 
-def plot_results():
-    json_path = 'trained_models/LoraB_visi_invi_alpha_1024/test/all_evaluations.json'
+def plot_results(model_dir):
+    json_path = os.path.join(model_dir, 'test', 'all_evaluations.json')
     if not os.path.exists(json_path):
-        print(f"File not found: {json_path}")
+        print(f"Error: {json_path} not found.")
         return
 
     with open(json_path, 'r') as f:
         data = json.load(f)
 
     scales = []
-    success_rates = []
-    path_lengths = []
-    
-    # Base model results (clean model without LoRA)
-    base_data = None
-    
-    # Try to find base model results
-    # 1. Look for 'base_model_invisible'
-    # 2. Look for any experiment that has use_lora: false
-    for exp_id, results in data.items():
-        if exp_id == "base_model_invisible" or "base_model" in exp_id:
-            base_data = results
-            print(f"Found base model results by ID: {exp_id}")
-            break
-            
-    if base_data is None:
-        for exp_id, results in reversed(list(data.items())):
-            if results['config'].get('use_lora') == False:
-                base_data = results
-                print(f"Found base model results (use_lora=False): {exp_id}")
-                break
+    sr = []
+    pl = []
 
-    gradual_results = []
+    # Use a dictionary to keep only the LATEST experiment for each scale
+    latest_results_by_scale = {}
+
+    # Filter and collect results
+    # Sort data items by timestamp if possible, or just rely on insertion order if it's chronological
+    # In JSON, order is usually preserved. We want the last one seen for each scale.
     for exp_id, results in data.items():
-        if "lorab_gradual" in exp_id:
-            scale = results['config'].get('lora_scale')
-            sr = results['summary']['success_rate']
-            pl = results['summary']['avg_path_length']
-            if scale is not None:
-                gradual_results.append((scale, sr, pl))
-    
-    # Sort by scale
-    gradual_results.sort()
-    
-    for scale, sr, pl in gradual_results:
+        config = results.get('config', {})
+        summary = results.get('summary', {})
+        
+        if 'lora_scale' in config:
+            scale = config['lora_scale']
+            # Only include if human_num is standard (20)
+            if config.get('human_num') == 20:
+                success_rate = summary.get('success_rate')
+                path_length = summary.get('avg_path_length')
+                
+                if success_rate is not None and path_length is not None:
+                    # Overwrite with newer results as we iterate
+                    latest_results_by_scale[scale] = {
+                        'sr': success_rate,
+                        'pl': path_length,
+                        'exp_id': exp_id
+                    }
+
+    if not latest_results_by_scale:
+        print("No valid results found to plot.")
+        return
+
+    # Prepare data for plotting (sorted by scale)
+    scales = []
+    sr = []
+    pl = []
+    for scale in sorted(latest_results_by_scale.keys()):
         scales.append(scale)
-        success_rates.append(sr)
-        path_lengths.append(pl)
-        
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
-    
-    # --- Plot Success Rate ---
-    ax1.plot(scales, success_rates, marker='o', linestyle='-', color='blue', label='LoRA Gradual Scale')
-    if base_data is not None:
-        bsr = base_data['summary']['success_rate']
-        ax1.axhline(y=bsr, color='red', linestyle='--', label=f'Base Model SR: {bsr:.3f}')
-        ax1.plot(0.0, bsr, 'rs', markersize=8)
-    
-    ax1.set_ylabel('Success Rate')
-    ax1.set_title('Success Rate vs LoRA Scale')
-    ax1.grid(True, alpha=0.3)
-    ax1.legend()
-    ax1.set_ylim(0, 1.1)
+        sr.append(latest_results_by_scale[scale]['sr'])
+        pl.append(latest_results_by_scale[scale]['pl'])
+        print(f"Scale {scale}: SR={latest_results_by_scale[scale]['sr']}, PL={latest_results_by_scale[scale]['pl']} (ID: {latest_results_by_scale[scale]['exp_id']})")
 
-    # --- Plot Path Length ---
-    ax2.plot(scales, path_lengths, marker='s', linestyle='-', color='green', label='LoRA Gradual Scale')
-    if base_data is not None:
-        bpl = base_data['summary']['avg_path_length']
-        ax2.axhline(y=bpl, color='red', linestyle='--', label=f'Base Model Path Length: {bpl:.1f}')
-        ax2.plot(0.0, bpl, 'rs', markersize=8)
-        
-    ax2.set_ylabel('Avg Path Length (m)')
-    ax2.set_xlabel('LoRA Scale (Alpha Factor)')
-    ax2.set_title('Path Length vs LoRA Scale')
-    ax2.grid(True, alpha=0.3)
-    ax2.legend()
+    # Plotting
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+
+    color = 'tab:blue'
+    ax1.set_xlabel('LoRA Scale')
+    ax1.set_ylabel('Success Rate', color=color)
+    ax1.plot(scales, sr, 'o-', color=color, label='Success Rate')
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.grid(True, linestyle='--', alpha=0.7)
+
+    ax2 = ax1.twinx()  
+    color = 'tab:red'
+    ax2.set_ylabel('Avg Path Length', color=color)  
+    ax2.plot(scales, pl, 's-', color=color, label='Avg Path Length')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    plt.title(f'Performance Metrics vs LoRA Scale\n({os.path.basename(model_dir)})')
+    fig.tight_layout()  
     
-    plt.tight_layout()
-    save_path = 'lora_metrics_plot.png'
+    save_path = os.path.join(model_dir, 'test', 'lora_scale_performance.png')
     plt.savefig(save_path)
     print(f"Plot saved to {save_path}")
+    plt.show()
 
 if __name__ == "__main__":
-    plot_results()
+    MODEL_DIR = "trained_models/LoraE_invi_visi_alpha_128"
+    plot_results(MODEL_DIR)
