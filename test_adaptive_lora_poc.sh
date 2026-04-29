@@ -18,8 +18,10 @@ for arg in "$@"; do
     fi
 done
 
-SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
-BEHAVIOURS=("switching" "always_off" "always_on")
+# SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
+# BEHAVIOURS=("switching" "always_off" "always_on")
+SCENARIOS=("seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
+BEHAVIOURS=("switching")
 
 for scenario in "${SCENARIOS[@]}"; do
     echo -e "\n\n=========================================================="

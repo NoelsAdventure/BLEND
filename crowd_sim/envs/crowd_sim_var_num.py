@@ -373,7 +373,8 @@ class CrowdSimVarNum(CrowdSim):
         self.robot_path = []
         self.cumulative_path_length = 0.0
         if self.robot is not None:
-            self.robot_path.append(self.robot.get_position())
+            lora_val = getattr(self.robot, 'lora_scale', 0.0)
+            self.robot_path.append((self.robot.get_position(), lora_val))
 
         # record px, py, r of each human, used for crowd_sim_pc env
         self.cur_human_states = np.zeros((self.max_human_num, 3))
@@ -569,14 +570,14 @@ class CrowdSimVarNum(CrowdSim):
             robot_color = 'red'
         else:
             robot_color = 'yellow'
-            
-        goal_color = '#f56200'
+
+        goal_color = 'purple'
         arrow_color_robot = "#ff6600"
         arrow_color_human = '#073f93'
-        
+
         aware_color = 'g' # Green
         ignore_color = 'b' # Blue
-        
+
         buffer_color = '#bee7fa'
         buffer_alpha_near = 0.6
         buffer_alpha_away = 0.2
@@ -600,13 +601,45 @@ class CrowdSimVarNum(CrowdSim):
         ax.set_yticks([])  # Hide y-axis numbers
         artists = []
 
-        # Plot robot trail
+        # Plot robot trail with gradual color change based on lora_scale
         if hasattr(self, 'robot_path') and len(self.robot_path) > 1:
-            path_x, path_y = zip(*self.robot_path)
-            trail = mlines.Line2D(path_x, path_y, color=robot_color, linestyle=':', alpha=0.5, linewidth=1)
-            ax.add_artist(trail)
-            artists.append(trail)
+            for i in range(len(self.robot_path) - 1):
+                p1 = self.robot_path[i]
+                p2 = self.robot_path[i+1]
+                
+                # Extract position and lora_scale (handling legacy data format if necessary)
+                if isinstance(p1[0], (list, np.ndarray, tuple)) and not isinstance(p1[0][0], (float, int, np.float32, np.float64)):
+                    # New format: ((x, y), lora_scale)
+                    pos1, l_scale = p1
+                    pos2 = p2[0]
+                elif isinstance(p1, (list, np.ndarray, tuple)) and len(p1) == 2 and isinstance(p1[1], (float, int, np.float32, np.float64)):
+                    # New format: ((x, y), lora_scale) where p1 is (pos, lora)
+                    pos1, l_scale = p1
+                    pos2 = p2[0] if isinstance(p2, tuple) and not isinstance(p2[0], (float, int)) else p2
+                else:
+                    # Legacy format: (x, y)
+                    pos1 = p1
+                    pos2 = p2
+                    l_scale = getattr(self.robot, 'lora_scale', 0.0)
 
+                # Calculate color for this segment
+                s = np.clip(l_scale, 0, 1)
+                segment_color = (1.0, 1.0 - s, 0.0)
+                
+                segment = mlines.Line2D([pos1[0], pos2[0]], [pos1[1], pos2[1]], color=segment_color, linestyle=':', alpha=0.5, linewidth=1)
+                ax.add_artist(segment)
+                artists.append(segment)
+
+        # Plot starting position (triangular purple)
+        if hasattr(self, 'robot_path') and len(self.robot_path) > 0:
+            p0 = self.robot_path[0]
+            if isinstance(p0[0], (list, np.ndarray, tuple)):
+                start_pos = p0[0]
+            else:
+                start_pos = p0
+            start_marker = mlines.Line2D([start_pos[0]], [start_pos[1]], color='purple', marker='^', linestyle='None', markersize=12, label='Start', alpha=0.8)
+            ax.add_artist(start_marker)
+            artists.append(start_marker)
         # Display Path Length and LoRA Scale on top left
         info_text = f"Path Length: {self.cumulative_path_length:.2f}m"
         if hasattr(self.robot, 'lora_scale'):

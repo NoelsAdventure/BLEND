@@ -165,12 +165,13 @@ class CrowdSimPred(CrowdSimVarNum):
 
         # Update robot path and distance
         new_pos = self.robot.get_position()
+        lora_val = getattr(self.robot, 'lora_scale', 0.0)
         if not hasattr(self, 'robot_path'):
-            self.robot_path = [last_pos]
+            self.robot_path = [(last_pos, lora_val)]
         if not hasattr(self, 'cumulative_path_length'):
             self.cumulative_path_length = 0.0
         
-        self.robot_path.append(new_pos)
+        self.robot_path.append((new_pos, lora_val))
         self.cumulative_path_length += np.linalg.norm(np.array(new_pos) - np.array(last_pos))
 
         self.global_time += self.time_step # max episode length=time_limit/time_step
