@@ -19,9 +19,7 @@ for arg in "$@"; do
 done
 
 SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
-BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt") #  "switching_discrepancy" "adaptive_discrepancy"
-# SCENARIOS=("seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
-# BEHAVIOURS=("adaptive")
+BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "switching_discrepancy" "adaptive_discrepancy")
 
 for scenario in "${SCENARIOS[@]}"; do
     echo -e "\n\n=========================================================="
@@ -30,7 +28,7 @@ for scenario in "${SCENARIOS[@]}"; do
     
     for behaviour in "${BEHAVIOURS[@]}"; do
         echo ">>> Testing [LoRA Model] with behaviour: $behaviour..."
-        python $SCRIPT --model_dir "$ADAPTIVE_MODEL" --test_model "$CHECKPOINT" \
+        python3 $SCRIPT --model_dir "$ADAPTIVE_MODEL" --test_model "$CHECKPOINT" \
             --adaptive_lora_scenario "$scenario" \
             --lora_behaviour "$behaviour" \
             --test_size $TEST_SIZE "$@"
@@ -41,5 +39,5 @@ echo -e "\n\n=========================================================="
 echo "ALL TESTS DONE. AGGREGATING RESULTS..."
 echo "=========================================================="
 # You might need to update these scripts if they rely on the old names
-python aggregate_results.py
-python plot_experiment_results.py
+python3 aggregate_results.py
+python3 plot_experiment_results.py

@@ -187,7 +187,7 @@ class st_model(nn.Module):
             raise RuntimeError('The temporal component is not lstm nor faster_lstm.')
         ## others
         self.args = args
-        print("new st model")
+        # print("new st model")
 
     def raw2gaussian(self, prob_raw):
         """

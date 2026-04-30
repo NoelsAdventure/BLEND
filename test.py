@@ -2,6 +2,16 @@ import logging
 import argparse
 import os
 import sys
+import warnings
+
+# Suppress Matplotlib permission errors and noisy cache warnings
+os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib_cache'
+os.makedirs(os.environ['MPLCONFIGDIR'], exist_ok=True)
+
+# Suppress Gym and Matplotlib warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
+
 from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
@@ -104,6 +114,11 @@ def main():
 
     file_handler = logging.FileHandler(log_file, mode='w')
     stdout_handler = logging.StreamHandler(sys.stdout)
+    
+    # Keep console clean, but log file detailed
+    if not test_args.visualize:
+        stdout_handler.setLevel(logging.WARNING)
+    
     level = logging.INFO
     logging.basicConfig(level=level, handlers=[stdout_handler, file_handler],
                         format='%(asctime)s, %(levelname)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
@@ -196,7 +211,6 @@ def main():
         for module in actor_critic.modules():
             if isinstance(module, (LoRALinear, LoRAAdapter)):
                 module.dynamic_scale = test_args.lora_scale
-                logging.info(f"Set dynamic_scale for module to {test_args.lora_scale}")
         
         # Sync with environment for plotting
         if hasattr(envs.venv, 'envs'):

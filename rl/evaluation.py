@@ -71,6 +71,13 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
     # start the testing episodes
     for k in range(test_size):
+        if not visualize:
+            percent = (k + 1) / test_size
+            bar_len = 30
+            bar = '#' * int(bar_len * percent)
+            spaces = '-' * (bar_len - len(bar))
+            print(f"\rEvaluating: [{bar}{spaces}] {k+1}/{test_size}", end='', flush=True)
+
         baseEnv.episode_k = k
         done = False
         rewards = []
@@ -410,9 +417,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                     eval_episode_rewards.append(info['episode']['r'])
 
         # an episode ends!
-        print('')
-        print('Reward={}'.format(episode_rew))
-        print('Episode', k, 'ends in', stepCounter)
+        if visualize:
+            print('')
+            print('Reward={}'.format(episode_rew))
+            print('Episode', k, 'ends in', stepCounter)
+        
         all_path_len.append(path_len)
         too_close_ratios.append(too_close/stepCounter*100)
         
@@ -426,19 +435,19 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             success += 1
             success_times.append(global_time)
             episode_result = 'Success'
-            print('Success')
+            if visualize: print('Success')
         elif isinstance(infos[0]['info'], Collision):
             collision += 1
             collision_cases.append(k)
             collision_times.append(global_time)
             episode_result = 'Collision'
-            print('Collision')
+            if visualize: print('Collision')
         elif isinstance(infos[0]['info'], Timeout):
             timeout += 1
             timeout_cases.append(k)
             timeout_times.append(time_limit)
             episode_result = 'Timeout'
-            print('Time out')
+            if visualize: print('Time out')
         
         episodes_data.append({
             'episode': k,
@@ -452,10 +461,17 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             'steps_data': episode_steps
         })
 
-        print(f"current SR: {success/(k+1)}; current CR: {collision/(k+1)}")
+        if not visualize and (k + 1) % 50 == 0:
+            avg_sr = success / (k + 1)
+            avg_cr = collision / (k + 1)
+            avg_lora = np.mean([ep['avg_lora_scale'] for ep in episodes_data])
+            print(f"\n[Step {k+1}] SR: {avg_sr:.3f}, CR: {avg_cr:.3f}, Avg LoRA: {avg_lora:.3f}")
 
         if video_save_path:
             baseEnv.animate_episode(video_save_path, f"{exp_id}_ep{k}_{episode_result}")
+
+    if not visualize:
+        print() # Move to next line after progress bar
 
     # all episodes end
     success_rate = success / test_size

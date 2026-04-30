@@ -2,6 +2,16 @@ import logging
 import argparse
 import os
 import sys
+import warnings
+
+# Suppress Matplotlib permission errors and noisy cache warnings
+os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib_cache'
+os.makedirs(os.environ['MPLCONFIGDIR'], exist_ok=True)
+
+# Suppress Gym and Matplotlib warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
+
 import torch
 import torch.nn as nn
 from matplotlib import pyplot as plt
