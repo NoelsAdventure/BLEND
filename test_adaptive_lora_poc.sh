@@ -5,7 +5,7 @@
 
 ADAPTIVE_MODEL="trained_models/LoraE_invi_visi_alpha_128"
 CHECKPOINT="05207.pt"
-TEST_SIZE=1
+TEST_SIZE=500
 
 # Logic to switch between test.py and visualize.py
 SCRIPT="test.py"
@@ -13,13 +13,13 @@ for arg in "$@"; do
     if [ "$arg" == "--visualize" ]; then
         SCRIPT="visualize.py"
         # When visualizing, we typically want fewer episodes to save time
-        TEST_SIZE=2
+        TEST_SIZE=1
         break
     fi
 done
 
 SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
-BEHAVIOURS=("adaptive" "switching" "always_off" "always_on")
+BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt") #  "switching_discrepancy" "adaptive_discrepancy"
 # SCENARIOS=("seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
 # BEHAVIOURS=("adaptive")
 

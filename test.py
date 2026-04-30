@@ -34,7 +34,8 @@ def main():
     parser.add_argument('--save_slides', default=False, action='store_true')
     # dynamic LoRA scale for testing gradual changes
     parser.add_argument('--lora_scale', type=float, default=1.0)
-    parser.add_argument('--lora_behaviour', type=str, choices=['switching', 'adaptive', 'always_off', 'always_on', 'none'], default='adaptive')
+    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy', 'none'], default='adaptive_discrepancy')
+    parser.add_argument('--discrepancy_threshold', type=float, default=0.05, help='Threshold for classifying a human as aware/friendly based on discrepancy score')
     parser.add_argument('--exp_id', type=str, default=None)
     parser.add_argument('--robot_visible', type=str, default=None, help='Override robot visibility: True or False')
     parser.add_argument('--human_num', type=int, default=None, help='Override number of humans')

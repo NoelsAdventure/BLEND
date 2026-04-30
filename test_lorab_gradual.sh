@@ -16,7 +16,7 @@ for scale in "${scales[@]}"; do
      
     # Run test.py with the specific scale
     # We pass any additional script arguments (like --visualize) using "$@"
-    python test.py --model_dir "$MODEL_DIR" --test_model "$CHECKPOINT" --lora_scale "$scale" "$@"
+    python3 test.py --model_dir "$MODEL_DIR" --test_model "$CHECKPOINT" --lora_scale "$scale" --lora_behaviour "fixed_scale" "$@"
      
     echo "Finished test for scale $scale"
     echo ""

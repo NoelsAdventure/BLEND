@@ -13,6 +13,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     """ function to run all testing episodes and log the testing metrics """
     # initializations
     eval_episode_rewards = []
+    
+    # Awareness prediction accuracy tracking
+    total_awareness_predictions = 0
+    correct_awareness_predictions = 0
+    all_discrepancy_data = {'aware': [], 'ignorant': []}
 
     if config.robot.policy not in ['orca', 'social_force']:
         eval_recurrent_hidden_states = {}
@@ -126,6 +131,14 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             for module in actor_critic.modules():
                 if isinstance(module, (LoRALinear, LoRAAdapter)):
                     module.dynamic_scale = 0.0
+        elif behaviour == 'fixed_scale':
+            scale = getattr(test_args, 'lora_scale', 1.0)
+            baseEnv.robot.lora_enabled = (scale > 0)
+            baseEnv.robot.lora_scale = scale
+            from rl.networks.network_utils import LoRALinear, LoRAAdapter
+            for module in actor_critic.modules():
+                if isinstance(module, (LoRALinear, LoRAAdapter)):
+                    module.dynamic_scale = scale
             
         if scenario == 'seperate_mixed_5050':
             # One group (half) is ignorant (False), the other is friendly (True)
@@ -141,7 +154,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             baseEnv.robot.visible = False
             
             # Start with LoRA OFF (if switching)
-            if behaviour in ['switching', 'adaptive']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
                 baseEnv.robot.lora_enabled = False
                 baseEnv.robot.lora_scale = 0.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -151,7 +164,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         elif scenario == 'seperate_all_ignorant':
             baseEnv.robot.visible = False
-            if behaviour in ['switching', 'adaptive']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
                 baseEnv.robot.lora_enabled = False
                 baseEnv.robot.lora_scale = 0.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -161,7 +174,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         elif scenario == 'seperate_all_aware':
             baseEnv.robot.visible = True
-            if behaviour in ['switching', 'adaptive']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
                 baseEnv.robot.lora_enabled = True
                 baseEnv.robot.lora_scale = 1.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -169,14 +182,58 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                     if isinstance(module, (LoRALinear, LoRAAdapter)):
                         module.dynamic_scale = 1.0
 
+        # Initialize prev_predictions before the loop for tracking discrepancy
+        prev_predictions = {}
+        for human in baseEnv.humans:
+            if human.last_prediction is not None and len(human.last_prediction) > 1:
+                prev_predictions[human.id] = human.last_prediction[1]
+
         episode_steps = []
+        episode_uncertainties = []
+        episode_lora_scales = []
         while not done:
             stepCounter = stepCounter + 1
             
+            # Calculate Prediction Discrepancy Scores to guess who is aware/ignorant
+            discrepancy_scores = {}
+            robot_pos = baseEnv.robot.get_position()
+            
+            for i, human in enumerate(baseEnv.humans):
+                if human.id in prev_predictions:
+                    actual_human_pos = np.array([human.px, human.py])
+                    predicted_human_pos = prev_predictions[human.id]
+                    
+                    # Method 2: Vector Projection Discrepancy
+                    error_vector = actual_human_pos - predicted_human_pos
+                    vector_from_robot = actual_human_pos - np.array(robot_pos)
+                    
+                    dist_from_robot = np.linalg.norm(vector_from_robot)
+                    if dist_from_robot > 0:
+                        direction_from_robot = vector_from_robot / dist_from_robot
+                        discrepancy_score = np.dot(error_vector, direction_from_robot)
+                    else:
+                        discrepancy_score = 0.0
+                        
+                    discrepancy_scores[human.id] = discrepancy_score
+
+                    # Track ground truth for statistics collection
+                    if hasattr(baseEnv.robot, 'visible_to_humans'):
+                        actual_friendly = baseEnv.robot.visible_to_humans[i]
+                        if actual_friendly:
+                            all_discrepancy_data['aware'].append(float(discrepancy_score))
+                        else:
+                            all_discrepancy_data['ignorant'].append(float(discrepancy_score))
+                    else:
+                        # If visibility not set per human, check overall robot.visible
+                        if baseEnv.robot.visible:
+                            all_discrepancy_data['aware'].append(float(discrepancy_score))
+                        else:
+                            all_discrepancy_data['ignorant'].append(float(discrepancy_score))
+
             # Adaptive LoRA Proof of Concept: Mid-episode switch for 'seperate_ignorant_to_aware_step25' scenario
             if scenario == 'seperate_ignorant_to_aware_step25' and stepCounter == 25:
                 baseEnv.robot.visible = True
-                if behaviour in ['switching', 'adaptive']:
+                if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
                     print(f"\n>>> Step {stepCounter}: Switching to VISIBLE and LoRA ON (Adaptive PoC)")
                     baseEnv.robot.lora_scale = 1.0
                         
@@ -185,74 +242,75 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         if isinstance(module, (LoRALinear, LoRAAdapter)):
                             module.dynamic_scale = 1.0
 
-            # Adaptive LoRA Proof of Concept: Zone-based switching for 'seperate_mixed_5050' scenario
-            if scenario == 'seperate_mixed_5050':
-                if behaviour == 'adaptive':
-                    # Continuous adaptive scale based on distance-weighted ratio
-                    robot_pos = baseEnv.robot.get_position()
-                    total_weight = 0.0
-                    friendly_weight = 0.0
-                    
-                    for i, human in enumerate(baseEnv.humans):
-                        dist = np.linalg.norm(np.array(human.get_position()) - np.array(robot_pos))
-                        if dist <= baseEnv.robot.sensor_range:
-                            # Calculate weight: closer humans have higher weight (1.0 at dist=0, 0.0 at dist=sensor_range)
-                            weight = max(0.0, 1.0 - (dist / baseEnv.robot.sensor_range))
-                            total_weight += weight
+            # Continuous adaptive scale or majority-based switching
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
+                robot_pos = baseEnv.robot.get_position()
+                total_weight = 0.0
+                friendly_weight = 0.0
+                friendly_in_range = 0
+                humans_in_range_count = 0
+                
+                for i, human in enumerate(baseEnv.humans):
+                    dist = np.linalg.norm(np.array(human.get_position()) - np.array(robot_pos))
+                    if dist <= baseEnv.robot.sensor_range:
+                        humans_in_range_count += 1
+                        
+                        # Awareness Detection
+                        if '_gt' in behaviour:
+                            # Ground Truth awareness
+                            if hasattr(baseEnv.robot, 'visible_to_humans'):
+                                is_friendly = baseEnv.robot.visible_to_humans[i]
+                            else:
+                                is_friendly = baseEnv.robot.visible
+                        else:
+                            # Discrepancy-based awareness
+                            is_friendly = False
+                            if human.id in discrepancy_scores:
+                                threshold = getattr(test_args, 'discrepancy_threshold', 0.05)
+                                is_friendly = discrepancy_scores[human.id] > threshold
+                                
+                                # Track accuracy against ground truth for statistics
+                                if hasattr(baseEnv.robot, 'visible_to_humans'):
+                                    actual_friendly = baseEnv.robot.visible_to_humans[i]
+                                    total_awareness_predictions += 1
+                                    if is_friendly == actual_friendly:
+                                        correct_awareness_predictions += 1
+                            # Note: if no prediction yet, is_friendly remains False as requested
+                        
+                        if is_friendly:
+                            friendly_in_range += 1
                             
-                            if baseEnv.robot.visible_to_humans[i]:
-                                friendly_weight += weight
+                        # Calculate distance-based weight (1.0 at dist=0, 0.0 at dist=sensor_range)
+                        weight = max(0.0, 1.0 - (dist / baseEnv.robot.sensor_range))
+                        total_weight += weight
+                        if is_friendly:
+                            friendly_weight += weight
+                
+                # Calculate target lora_scale
+                if humans_in_range_count == 0:
+                    target_scale = 1.0  # Default to LoRA ON if no humans in range
+                    ratio = 1.0
+                elif 'switching' in behaviour:
+                    ratio = friendly_in_range / humans_in_range_count
+                    target_scale = 1.0 if ratio > 0.5 else 0.0
+                else: # adaptive
+                    ratio = friendly_weight / total_weight if total_weight > 0 else 1.0
+                    target_scale = ratio
+                
+                # Apply change if scale differs significantly
+                if abs(target_scale - baseEnv.robot.lora_scale) > 0.01:
+                    msg = f"Ratio {ratio:.2f}"
+                    if 'switching' in behaviour:
+                        msg = f"Ratio {friendly_in_range}/{humans_in_range_count}={ratio:.2f}"
+                    print(f"\n>>> Step {stepCounter}: {msg}. Target Scale = {target_scale:.2f}")
                     
-                    # Calculate continuous target scale
-                    if total_weight <= 0.0:
-                        target_scale = 1.0  # Default to 1.0 if no humans in range
-                    else:
-                        target_scale = friendly_weight / total_weight
-                        
-                    # Apply change if scale differs significantly
-                    if abs(target_scale - baseEnv.robot.lora_scale) > 0.01:
-                        print(f"\n>>> Step {stepCounter}: Target Scale = {target_scale:.2f} (Total Weight: {total_weight:.2f}, Friendly: {friendly_weight:.2f})")
-                        baseEnv.robot.lora_scale = target_scale
-                        baseEnv.robot.lora_enabled = (target_scale > 0)
-                        
-                        from rl.networks.network_utils import LoRALinear, LoRAAdapter
-                        for module in actor_critic.modules():
-                            if isinstance(module, (LoRALinear, LoRAAdapter)):
-                                module.dynamic_scale = target_scale
-
-                elif behaviour == 'switching':
-                    # Get robot position
-                    robot_pos = baseEnv.robot.get_position()
+                    baseEnv.robot.lora_scale = target_scale
+                    baseEnv.robot.lora_enabled = (target_scale > 0)
                     
-                    humans_in_range = []
-                    friendly_in_range = 0
-                    
-                    for i, human in enumerate(baseEnv.humans):
-                        dist = np.linalg.norm(np.array(human.get_position()) - np.array(robot_pos))
-                        if dist <= baseEnv.robot.sensor_range:
-                            humans_in_range.append(i)
-                            if baseEnv.robot.visible_to_humans[i]:
-                                friendly_in_range += 1
-                    
-                    # Calculate target lora_scale
-                    if not humans_in_range:
-                        target_scale = 1.0  # Default to LoRA ON if no humans in range
-                        ratio = 1.0
-                    else:
-                        ratio = friendly_in_range / len(humans_in_range)
-                        target_scale = 1.0 if ratio > 0.5 else 0.0
-                    
-                    # Apply change if scale needs update
-                    if target_scale != baseEnv.robot.lora_scale:
-                        msg = f"Ratio {friendly_in_range}/{len(humans_in_range)}={ratio:.2f}" if humans_in_range else "No humans in range"
-                        print(f"\n>>> Step {stepCounter}: {msg}. Switching LoRA to {target_scale}")
-                        baseEnv.robot.lora_scale = target_scale
-                        baseEnv.robot.lora_enabled = (target_scale > 0)
-                        
-                        from rl.networks.network_utils import LoRALinear, LoRAAdapter
-                        for module in actor_critic.modules():
-                            if isinstance(module, (LoRALinear, LoRAAdapter)):
-                                module.dynamic_scale = target_scale
+                    from rl.networks.network_utils import LoRALinear, LoRAAdapter
+                    for module in actor_critic.modules():
+                        if isinstance(module, (LoRALinear, LoRAAdapter)):
+                            module.dynamic_scale = target_scale
             
             # Collect data for the CURRENT step before taking the next action
             # Robot features in robot_node: [px, py, radius, gx, gy, v_pref, theta]
@@ -277,13 +335,15 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                     'vel': [float(r_vel[0]), float(r_vel[1])],
                     'goal': [float(r_node[3]), float(r_node[4])],
                     'theta': float(r_node[6]),
-                    'radius': float(r_node[2])
+                    'radius': float(r_node[2]),
+                    'lora_scale': float(baseEnv.robot.lora_scale)
                 },
                 'humans': human_states,
                 'pred_traj': out_pred.tolist(),
                 'uncertainty': aci_predicted_conformity_scores[0].tolist() if aci_predicted_conformity_scores is not None else None
             }
             episode_steps.append(step_data)
+            episode_lora_scales.append(float(baseEnv.robot.lora_scale))
 
             if config.robot.policy not in ['orca', 'social_force']:
                 # run inference on the NN policy
@@ -312,6 +372,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             out_pred = obs['spatial_edges'][:, :, :].to('cpu').numpy()[0]
             outs = baseEnv.talk2Env(out_pred)
             aci_predicted_conformity_scores, aci_cost = outs#np.array([o[0] for o in outs]) # [num_envs, num_humans, num_pred_steps]
+            
+            # Update prev_predictions for the next step
+            for h in baseEnv.humans:
+                if h.last_prediction is not None and len(h.last_prediction) > 1:
+                    prev_predictions[h.id] = h.last_prediction[1]
             
             # Track uncertainty for each step
             if aci_predicted_conformity_scores is not None and len(aci_predicted_conformity_scores) > 0:
@@ -354,6 +419,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         avg_uncertainty = np.mean(episode_uncertainties) if len(episode_uncertainties) > 0 else 0.0
         all_avg_uncertainty.append(avg_uncertainty)
 
+        avg_lora_scale = np.mean(episode_lora_scales) if len(episode_lora_scales) > 0 else 0.0
+
         episode_result = 'Unknown'
         if isinstance(infos[0]['info'], ReachGoal):
             success += 1
@@ -381,6 +448,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             'time': float(global_time),
             'path_length': float(path_len),
             'avg_uncertainty': float(avg_uncertainty),
+            'avg_lora_scale': float(avg_lora_scale),
             'steps_data': episode_steps
         })
 
@@ -401,9 +469,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     logging.info(
         'Testing success rate: {:.4f}, collision rate: {:.4f}, timeout rate: {:.4f}, '
         'nav time: {:.4f}, path length: {:.4f}, average intrusion ratio: {:.4f}%, '
-        'average minimal distance during intrusions: {:.4f}, average prediction uncertainty: {:.4f}'.
+        'average minimal distance during intrusions: {:.4f}, average prediction uncertainty: {:.4f}, '
+        'average LoRA scale: {:.4f}'.
             format(success_rate, collision_rate, timeout_rate, avg_nav_time, np.mean(all_path_len),
-                   np.mean(too_close_ratios), np.mean(min_dist), np.mean(all_avg_uncertainty)))
+                   np.mean(too_close_ratios), np.mean(min_dist), np.mean(all_avg_uncertainty),
+                   np.mean([ep['avg_lora_scale'] for ep in episodes_data])))
 
     logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
     logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
@@ -432,14 +502,16 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'config': important_config,
         'summary': {
-            'num_episodes': int(test_size),
-            'success_rate': float(success_rate),
-            'collision_rate': float(collision_rate),
-            'timeout_rate': float(timeout_rate),
-            'avg_nav_time': float(avg_nav_time),
+            'num_episodes': test_size,
+            'success_rate': success_rate,
+            'collision_rate': collision_rate,
+            'timeout_rate': timeout_rate,
+            'avg_nav_time': avg_nav_time,
             'avg_path_length': float(np.mean(all_path_len)),
-            'avg_uncertainty': float(np.mean(all_avg_uncertainty))
+            'avg_uncertainty': float(np.mean(all_avg_uncertainty)),
+            'avg_lora_scale': float(np.mean([ep['avg_lora_scale'] for ep in episodes_data]))
         },
+
         'episodes': episodes_data
     }
     
@@ -486,4 +558,20 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 all_avg_uncertainty[i] if i < len(all_avg_uncertainty) else ''
             ]
             writer.writerow(row)
+    if total_awareness_predictions > 0:
+        accuracy = (correct_awareness_predictions / total_awareness_predictions) * 100
+        print(f"\n==========================================================")
+        print(f"AWARENESS PREDICTION ACCURACY")
+        print(f"==========================================================")
+        print(f"Total Predictions: {total_awareness_predictions}")
+        print(f"Correct Predictions: {correct_awareness_predictions}")
+        print(f"Accuracy: {accuracy:.2f}% (Threshold: {getattr(test_args, 'discrepancy_threshold', 0.05)})")
+        print(f"==========================================================\n")
+
+    # Save discrepancy data for analysis
+    data_path = os.path.join(model_dir, 'test', f'discrepancy_data_{scenario}.json')
+    with open(data_path, 'w') as f:
+        json.dump(all_discrepancy_data, f, indent=4)
+    logging.info(f"Discrepancy data saved to {data_path}")
+
     eval_envs.close()

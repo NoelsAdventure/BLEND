@@ -10,4 +10,4 @@ CHECKPOINT="05207.pt"
 
 echo "Testing INVISIBLE scenario..."
 # Scale 0 means LoRA is effectively disabled for the invisible scenario
-python test.py --model_dir "$MODEL_DIR" --test_model "$CHECKPOINT" --robot_visible False --lora_scale 0.0 --exp_id "LoraE_Invi" --test_size 1000 --lora_scale "0.0" "$@"
+python3 test.py --model_dir "$MODEL_DIR" --test_model "$CHECKPOINT" --robot_visible False --lora_scale 0.0 --lora_behaviour "fixed_scale" --exp_id "LoraE_Invi" --test_size 1000 "$@"
