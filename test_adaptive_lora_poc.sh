@@ -5,7 +5,7 @@
 
 ADAPTIVE_MODEL="trained_models/LoraE_invi_visi_alpha_128"
 CHECKPOINT="05207.pt"
-TEST_SIZE=500
+TEST_SIZE=1
 
 # Logic to switch between test.py and visualize.py
 SCRIPT="test.py"

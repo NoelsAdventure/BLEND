@@ -70,14 +70,13 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             exp_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
 
     # start the testing episodes
-    for k in range(test_size):
-        if not visualize:
-            percent = (k + 1) / test_size
-            bar_len = 30
-            bar = '#' * int(bar_len * percent)
-            spaces = '-' * (bar_len - len(bar))
-            print(f"\rEvaluating: [{bar}{spaces}] {k+1}/{test_size}", end='', flush=True)
+    try:
+        from tqdm import tqdm
+        pbar = tqdm(range(test_size), desc='Evaluating')
+    except ImportError:
+        pbar = range(test_size)
 
+    for k in pbar:
         baseEnv.episode_k = k
         done = False
         rewards = []
@@ -198,6 +197,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         episode_steps = []
         episode_uncertainties = []
         episode_lora_scales = []
+        episode_discrepancies = []
+        episode_friendly_flags = []
         while not done:
             stepCounter = stepCounter + 1
             
@@ -241,7 +242,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             if scenario == 'seperate_ignorant_to_aware_step25' and stepCounter == 25:
                 baseEnv.robot.visible = True
                 if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
-                    print(f"\n>>> Step {stepCounter}: Switching to VISIBLE and LoRA ON (Adaptive PoC)")
+                    if test_size <= 10:
+                        print(f"\n>>> Step {stepCounter}: Switching to VISIBLE and LoRA ON (Adaptive PoC)")
                     baseEnv.robot.lora_scale = 1.0
                         
                     from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -306,10 +308,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 
                 # Apply change if scale differs significantly
                 if abs(target_scale - baseEnv.robot.lora_scale) > 0.01:
-                    msg = f"Ratio {ratio:.2f}"
-                    if 'switching' in behaviour:
-                        msg = f"Ratio {friendly_in_range}/{humans_in_range_count}={ratio:.2f}"
-                    print(f"\n>>> Step {stepCounter}: {msg}. Target Scale = {target_scale:.2f}")
+                    if test_size <= 10:
+                        msg = f"Ratio {ratio:.2f}"
+                        if 'switching' in behaviour:
+                            msg = f"Ratio {friendly_in_range}/{humans_in_range_count}={ratio:.2f}"
+                        print(f"\n>>> Step {stepCounter}: {msg}. Target Scale = {target_scale:.2f}")
                     
                     baseEnv.robot.lora_scale = target_scale
                     baseEnv.robot.lora_enabled = (target_scale > 0)
@@ -327,13 +330,38 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             
             # Current human states
             human_states = []
-            for h in baseEnv.humans:
+            for i, h in enumerate(baseEnv.humans):
+                # Determine if this human was considered "friendly" in the current step
+                # (re-calculating awareness here to match the logic used in the scaling step)
+                is_friendly = False
+                
+                # Check if discrepancy is actually available for this human
+                h_discrepancy_raw = discrepancy_scores.get(h.id)
+                h_discrepancy_for_logic = h_discrepancy_raw if h_discrepancy_raw is not None else 0.0
+                
+                if behaviour in ['switching_gt', 'adaptive_gt']:
+                    if hasattr(baseEnv.robot, 'visible_to_humans'):
+                        is_friendly = bool(baseEnv.robot.visible_to_humans[i])
+                    else:
+                        is_friendly = bool(baseEnv.robot.visible)
+                elif behaviour in ['switching_discrepancy', 'adaptive_discrepancy']:
+                    threshold = getattr(test_args, 'discrepancy_threshold', 0.05)
+                    is_friendly = h_discrepancy_for_logic > threshold
+                
                 human_states.append({
                     'id': int(h.id),
                     'pos': [float(h.px), float(h.py)],
                     'vel': [float(h.vx), float(h.vy)],
-                    'radius': float(h.radius)
+                    'radius': float(h.radius),
+                    'discrepancy': float(h_discrepancy_raw) if h_discrepancy_raw is not None else None,
+                    'is_friendly': bool(is_friendly)
                 })
+                
+                # Only include in averages if the data was actually available
+                if h_discrepancy_raw is not None:
+                    episode_discrepancies.append(float(h_discrepancy_raw))
+                
+                episode_friendly_flags.append(bool(is_friendly))
 
             step_data = {
                 'step': stepCounter,
@@ -429,6 +457,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         all_avg_uncertainty.append(avg_uncertainty)
 
         avg_lora_scale = np.mean(episode_lora_scales) if len(episode_lora_scales) > 0 else 0.0
+        avg_discrepancy_ep = np.mean(episode_discrepancies) if len(episode_discrepancies) > 0 else 0.0
+        avg_friendly_ratio_ep = np.mean(episode_friendly_flags) if len(episode_friendly_flags) > 0 else 0.0
 
         episode_result = 'Unknown'
         if isinstance(infos[0]['info'], ReachGoal):
@@ -458,14 +488,28 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             'path_length': float(path_len),
             'avg_uncertainty': float(avg_uncertainty),
             'avg_lora_scale': float(avg_lora_scale),
+            'avg_discrepancy': float(avg_discrepancy_ep),
+            'avg_friendly_ratio': float(avg_friendly_ratio_ep),
             'steps_data': episode_steps
         })
+
+        if hasattr(pbar, 'set_postfix'):
+            avg_lora_so_far = np.mean([ep['avg_lora_scale'] for ep in episodes_data])
+            pbar.set_postfix({
+                'SR': f'{success/(k+1):.2f}',
+                'CR': f'{collision/(k+1):.2f}',
+                'Avg LoRA': f'{avg_lora_so_far:.2f}'
+            })
 
         if not visualize and (k + 1) % 50 == 0:
             avg_sr = success / (k + 1)
             avg_cr = collision / (k + 1)
             avg_lora = np.mean([ep['avg_lora_scale'] for ep in episodes_data])
-            print(f"\n[Step {k+1}] SR: {avg_sr:.3f}, CR: {avg_cr:.3f}, Avg LoRA: {avg_lora:.3f}")
+            summary_str = f"[Step {k+1}] SR: {avg_sr:.3f}, CR: {avg_cr:.3f}, Avg LoRA: {avg_lora:.3f}"
+            if hasattr(pbar, 'write'):
+                pbar.write(summary_str)
+            else:
+                print(f"\n{summary_str}")
 
         if video_save_path:
             baseEnv.animate_episode(video_save_path, f"{exp_id}_ep{k}_{episode_result}")
@@ -513,6 +557,15 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         'model_dir': model_dir
     }
 
+    # Calculate average discrepancy scores for the experiment
+    aware_scores = all_discrepancy_data.get('aware', [])
+    ignorant_scores = all_discrepancy_data.get('ignorant', [])
+    all_scores = aware_scores + ignorant_scores
+    
+    avg_discrepancy_aware = np.mean(aware_scores) if aware_scores else 0.0
+    avg_discrepancy_ignorant = np.mean(ignorant_scores) if ignorant_scores else 0.0
+    avg_discrepancy_all = np.mean(all_scores) if all_scores else 0.0
+
     full_experiment_data = {
         'exp_id': exp_id,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -525,7 +578,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             'avg_nav_time': avg_nav_time,
             'avg_path_length': float(np.mean(all_path_len)),
             'avg_uncertainty': float(np.mean(all_avg_uncertainty)),
-            'avg_lora_scale': float(np.mean([ep['avg_lora_scale'] for ep in episodes_data]))
+            'avg_lora_scale': float(np.mean([ep['avg_lora_scale'] for ep in episodes_data])),
+            'avg_discrepancy_aware': float(avg_discrepancy_aware),
+            'avg_discrepancy_ignorant': float(avg_discrepancy_ignorant),
+            'avg_discrepancy_all': float(avg_discrepancy_all)
         },
 
         'episodes': episodes_data
