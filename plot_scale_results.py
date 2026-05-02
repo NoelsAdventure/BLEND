@@ -4,7 +4,7 @@ import os
 import glob
 import re
 
-def plot_scale_results(model_dir='trained_models/LoraE_invi_visi_alpha_128', output_dir='result', min_episodes=100, selected_scales=None):
+def plot_scale_results(model_dir='trained_models/LoraE_invi_visi_alpha_128', output_dir='result', min_episodes=50, selected_scales=None):
     test_dir = os.path.join(model_dir, 'test')
     if not os.path.exists(test_dir):
         print(f"Error: {test_dir} not found.")
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_dir', type=str, default='trained_models/LoraE_invi_visi_alpha_128')
     parser.add_argument('--output_dir', type=str, default='result')
-    parser.add_argument('--min_episodes', type=int, default=100)
+    parser.add_argument('--min_episodes', type=int, default=50)
     parser.add_argument('--scales', type=str, default=None, help="Comma-separated list of scales to include (e.g. 0.0,0.5,1.0)")
     args = parser.parse_args()
     
