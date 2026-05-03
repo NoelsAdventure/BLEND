@@ -177,7 +177,8 @@ def main():
         actor_critic = None
 
     # Setup visualization save path
-    save_path = os.path.join("visualizations", os.path.basename(model_dir_temp))
+    scenario = getattr(test_args, 'adaptive_lora_scenario', 'none')
+    save_path = os.path.join("visualizations", os.path.basename(model_dir_temp), scenario)
     os.makedirs(save_path, exist_ok=True)
     logging.info(f"Videos will be saved to {save_path}")
 

@@ -130,7 +130,7 @@ class Config(object):
     # robot config
     robot = BaseConfig()
     # whether robot is visible to humans (whether humans respond to the robot's motion)
-    robot.visible = False 
+    robot.visible = True 
     robot.policy = 'selfAttn_merge_srnn'
     robot.radius = 0.3
     robot.v_pref = 1

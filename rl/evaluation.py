@@ -17,6 +17,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     # Awareness prediction accuracy tracking
     total_awareness_predictions = 0
     correct_awareness_predictions = 0
+    tp = 0
+    tn = 0
+    fp = 0
+    fn = 0
     all_discrepancy_data = {'aware': [], 'ignorant': []}
 
     if config.robot.policy not in ['orca', 'social_force']:
@@ -190,6 +194,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         # Initialize prev_predictions before the loop for tracking discrepancy
         prev_predictions = {}
+        human_above_threshold_count = {} # Track consecutive frames above threshold
         for human in baseEnv.humans:
             if human.last_prediction is not None and len(human.last_prediction) > 1:
                 prev_predictions[human.id] = human.last_prediction[1]
@@ -211,17 +216,17 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                     actual_human_pos = np.array([human.px, human.py])
                     predicted_human_pos = prev_predictions[human.id]
                     
-                    # Method 2: Vector Projection Discrepancy
-                    error_vector = actual_human_pos - predicted_human_pos
-                    vector_from_robot = actual_human_pos - np.array(robot_pos)
-                    
-                    dist_from_robot = np.linalg.norm(vector_from_robot)
-                    if dist_from_robot > 0:
-                        direction_from_robot = vector_from_robot / dist_from_robot
-                        discrepancy_score = np.dot(error_vector, direction_from_robot)
-                    else:
-                        discrepancy_score = 0.0
-                        
+                    # Calculate vectors
+                    v_robot_pred = np.array(robot_pos) - predicted_human_pos
+                    v_human_pred = actual_human_pos - predicted_human_pos
+
+                    # Calculate psi: angle between (P_robot - P_pred_before) and (P_human - P_pred_before)
+                    angle_robot = np.arctan2(v_robot_pred[1], v_robot_pred[0])
+                    angle_human = np.arctan2(v_human_pred[1], v_human_pred[0])
+                    psi = angle_human - angle_robot
+
+                    # Calculate discrepancy score: ||P_human - P_pred_before|| * abs(sin(psi))
+                    discrepancy_score = np.linalg.norm(v_human_pred) * abs(np.sin(psi))                        
                     discrepancy_scores[human.id] = discrepancy_score
 
                     # Track ground truth for statistics collection
@@ -254,6 +259,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # Continuous adaptive scale or majority-based switching
             if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
                 robot_pos = baseEnv.robot.get_position()
+                robot_theta = obs['robot_node'][0, 0, 6].item() # robot heading
                 total_weight = 0.0
                 friendly_weight = 0.0
                 friendly_in_range = 0
@@ -271,39 +277,69 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                                 is_friendly = baseEnv.robot.visible_to_humans[i]
                             else:
                                 is_friendly = baseEnv.robot.visible
+                            actual_friendly = is_friendly
                         else:
                             # Discrepancy-based awareness
-                            is_friendly = False
-                            if human.id in discrepancy_scores:
-                                threshold = getattr(test_args, 'discrepancy_threshold', 0.05)
-                                is_friendly = discrepancy_scores[human.id] > threshold
+                            score = discrepancy_scores.get(human.id, 0.0)
+                            threshold = getattr(test_args, 'discrepancy_threshold', 0.05)
+                            m_threshold = getattr(test_args, 'discrepancy_m', 1)
+                            
+                            if score > threshold:
+                                human_above_threshold_count[human.id] = human_above_threshold_count.get(human.id, 0) + 1
+                            else:
+                                human_above_threshold_count[human.id] = 0
                                 
-                                # Track accuracy against ground truth for statistics
-                                if hasattr(baseEnv.robot, 'visible_to_humans'):
-                                    actual_friendly = baseEnv.robot.visible_to_humans[i]
-                                    total_awareness_predictions += 1
-                                    if is_friendly == actual_friendly:
-                                        correct_awareness_predictions += 1
-                            # Note: if no prediction yet, is_friendly remains False as requested
+                            is_friendly = human_above_threshold_count.get(human.id, 0) >= m_threshold
+                            
+                            # Track accuracy against ground truth for statistics
+                            actual_friendly = False
+                            if hasattr(baseEnv.robot, 'visible_to_humans'):
+                                actual_friendly = baseEnv.robot.visible_to_humans[i]
+                            else:
+                                actual_friendly = baseEnv.robot.visible
+                                
+                            total_awareness_predictions += 1
+                            if is_friendly == actual_friendly:
+                                correct_awareness_predictions += 1
+                            
+                            if is_friendly and actual_friendly:
+                                tp += 1
+                            elif is_friendly and not actual_friendly:
+                                fp += 1
+                            elif not is_friendly and actual_friendly:
+                                fn += 1
+                            elif not is_friendly and not actual_friendly:
+                                tn += 1
                         
                         if is_friendly:
                             friendly_in_range += 1
                             
                         # Calculate distance-based weight (1.0 at dist=0, 0.0 at dist=sensor_range)
-                        weight = max(0.0, 1.0 - (dist / baseEnv.robot.sensor_range))
+                        dist_weight = max(0.0, 1.0 - (dist / baseEnv.robot.sensor_range))
+                        
+                        # Calculate directional weight (cos of half angle difference)
+                        angle_to_human = np.arctan2(human.py - robot_pos[1], human.px - robot_pos[0])
+                        theta_i = robot_theta - angle_to_human
+                        
+                        # Ensure theta_i is in [-pi, pi] for consistent cos(theta/2) behavior
+                        theta_i = (theta_i + np.pi) % (2 * np.pi) - np.pi
+                        direction_weight = np.cos(theta_i / 2)
+                        
+                        weight = dist_weight * direction_weight
+                        
                         total_weight += weight
                         if is_friendly:
                             friendly_weight += weight
                 
                 # Calculate target lora_scale
                 if humans_in_range_count == 0:
-                    target_scale = 1.0  # Default to LoRA ON if no humans in range
-                    ratio = 1.0
+                    target_scale = 0.0  # Default to LoRA OFF if no humans in range
+                    ratio = 0.0
                 elif 'switching' in behaviour:
                     ratio = friendly_in_range / humans_in_range_count
                     target_scale = 1.0 if ratio > 0.5 else 0.0
                 else: # adaptive
-                    ratio = friendly_weight / total_weight if total_weight > 0 else 1.0
+                    ratio = friendly_weight / total_weight if total_weight > 0 else 0.0
                     target_scale = ratio
                 
                 # Apply change if scale differs significantly
@@ -338,7 +374,6 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 # Check if discrepancy is actually available for this human
                 h_discrepancy_raw = discrepancy_scores.get(h.id)
                 h_discrepancy_for_logic = h_discrepancy_raw if h_discrepancy_raw is not None else 0.0
-                
                 if behaviour in ['switching_gt', 'adaptive_gt']:
                     if hasattr(baseEnv.robot, 'visible_to_humans'):
                         is_friendly = bool(baseEnv.robot.visible_to_humans[i])
@@ -495,9 +530,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         if hasattr(pbar, 'set_postfix'):
             avg_lora_so_far = np.mean([ep['avg_lora_scale'] for ep in episodes_data])
+            avg_pl_so_far = np.mean(all_path_len)
             pbar.set_postfix({
                 'SR': f'{success/(k+1):.2f}',
                 'CR': f'{collision/(k+1):.2f}',
+                'Avg PL': f'{avg_pl_so_far:.2f}',
                 'Avg LoRA': f'{avg_lora_so_far:.2f}'
             })
 
@@ -581,7 +618,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             'avg_lora_scale': float(np.mean([ep['avg_lora_scale'] for ep in episodes_data])),
             'avg_discrepancy_aware': float(avg_discrepancy_aware),
             'avg_discrepancy_ignorant': float(avg_discrepancy_ignorant),
-            'avg_discrepancy_all': float(avg_discrepancy_all)
+            'avg_discrepancy_all': float(avg_discrepancy_all),
+            'tp': int(tp),
+            'tn': int(tn),
+            'fp': int(fp),
+            'fn': int(fn)
         },
 
         'episodes': episodes_data
@@ -637,7 +678,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         print(f"==========================================================")
         print(f"Total Predictions: {total_awareness_predictions}")
         print(f"Correct Predictions: {correct_awareness_predictions}")
-        print(f"Accuracy: {accuracy:.2f}% (Threshold: {getattr(test_args, 'discrepancy_threshold', 0.05)})")
+        print(f"Accuracy: {accuracy:.2f}% (Threshold: {getattr(test_args, 'discrepancy_threshold', 0.05)}, M: {getattr(test_args, 'discrepancy_m', 1)})")
+        print(f"TP: {tp}, TN: {tn}, FP: {fp}, FN: {fn}")
         print(f"==========================================================\n")
 
     # Save discrepancy data for analysis

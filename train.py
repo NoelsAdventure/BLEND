@@ -34,7 +34,7 @@ def main():
     # Create unique model name based on configuration parameters
     if hasattr(env_config, 'lora') and env_config.lora.use_lora:
         # New LoRA naming convention: use config.note and append LoRA details
-        model_name = f"{env_config.note}_alpha_{env_config.lora.alpha}"
+        model_name = f"{env_config.note}_rank_{env_config.lora.rank}"
     else:
         # Keep original naming for standard models
         model_name = f"{env_config.note}"
@@ -205,10 +205,34 @@ def main():
         wandb.define_metric("env/*", step_metric="env_step")
         wandb.define_metric("train/*", step_metric="train_step")
     
-    # Save experiment name to file
+    # Save experiment name and detailed config to files
     note_file_path = os.path.join(algo_args.output_dir, 'note.txt')
     with open(note_file_path, 'w') as file:
         file.write(trial_name)
+
+    summary_file_path = os.path.join(algo_args.output_dir, 'training_summary.txt')
+    with open(summary_file_path, 'w') as f:
+        f.write(f"Date: {time.ctime()}\n")
+        f.write(f"Note: {env_config.note}\n")
+        f.write(f"Trial Name: {trial_name}\n")
+        f.write(f"Environment: {algo_args.env_name}\n")
+        f.write(f"Robot Visible: {env_config.robot.visible}\n")
+        
+        use_lora = getattr(env_config.lora, 'use_lora', False)
+        f.write(f"Use LoRA: {use_lora}\n")
+        if use_lora:
+            f.write(f"LoRA Rank: {env_config.lora.rank}\n")
+            f.write(f"LoRA Alpha: {env_config.lora.alpha}\n")
+            
+        base_model = algo_args.load_path if algo_args.resume else "Randomly Initialized"
+        f.write(f"Base Model: {base_model}\n")
+        
+        # Add parameter statistics
+        for model, name in [(actor_critic, "Actor-Critic"), (cost_actor_critic, "Cost-Critic")]:
+            total_params = sum(p.numel() for p in model.parameters())
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            f.write(f"[{name}] Total Parameters: {total_params:,}\n")
+            f.write(f"[{name}] Trainable Parameters: {trainable_params:,} ({100 * trainable_params / total_params:.4f}%)\n")
 
     # Initialize tracking variables
     step_iter = 0
@@ -249,6 +273,8 @@ def main():
     last_robot_pos = obs['robot_node'][..., 0:2].reshape(algo_args.num_processes, 2).cpu().numpy()
 
     start = time.time()
+    total_sim_time = 0.0
+    total_train_time = 0.0
     # Calculate total number of training updates
     num_updates = int(algo_args.num_env_steps) // algo_args.num_steps \
                                                // algo_args.num_processes
@@ -264,6 +290,7 @@ def main():
                 algo_args.lr)
 
         # Collect experience for num_steps timesteps
+        sim_start = time.time()
         for step in range(algo_args.num_steps):
             # Sample actions from current policy
             with torch.no_grad():
@@ -404,6 +431,9 @@ def main():
             # Store experience in rollout buffer
             rollouts.insert(obs, recurrent_hidden_states, action,
                             action_log_prob, value, cost_value, reward, processed_costs, masks, bad_masks)
+        
+        sim_end = time.time()
+        total_sim_time += (sim_end - sim_start)
 
         # Compute value estimates for the last state
         with torch.no_grad():
@@ -424,6 +454,7 @@ def main():
                 rollouts.masks[-1]).detach()
 
         # Compute returns and advantages using GAE
+        train_start = time.time()
         rollouts.compute_returns(next_value,
                                  cost_next_value,
                                  algo_args.use_gae,
@@ -445,6 +476,8 @@ def main():
         value_loss, cost_value_loss, lag_factor, action_loss, dist_entropy, adv_targ_epoch, cost_adv_targ_epoch = agent.update(rollouts, mean_ep_costs)
 
         rollouts.after_update()
+        train_end = time.time()
+        total_train_time += (train_end - train_start)
         
         # Update progress bar postfix with latest metrics
         sr = np.mean(episode_success) if len(episode_success) > 0 else 0
@@ -473,7 +506,9 @@ def main():
                 "train/adv_targ_epoch": adv_targ_epoch,
                 "train/cost_adv_targ_epoch": cost_adv_targ_epoch,
                 "train/mean_ep_costs": mean_ep_costs,
-                "train/mean_ep_rewards": mean_ep_rewards
+                "train/mean_ep_rewards": mean_ep_rewards,
+                "train/sim_time": total_sim_time,
+                "train/update_time": total_train_time
             })
 
         # Save model checkpoints periodically
@@ -501,12 +536,15 @@ def main():
 
             pbar.write(
                 "Updates {}, num timesteps {}, FPS {} \n"
+                "Total Sim Time: {:.2f}s, Total Train Time: {:.2f}s\n"
                 "Last {} training episodes: mean/median reward {:.1f}/{:.1f}, "
                 "mean/median cost {:.1f}/{:.1f}, "
                 "min/max reward {:.1f}/{:.1f}\n".format(
                     j,
                     total_num_steps,
                     int(total_num_steps / (end - start)),
+                    total_sim_time,
+                    total_train_time,
                     len(episode_rewards),
                     np.mean(episode_rewards),
                     np.median(episode_rewards),
@@ -522,13 +560,17 @@ def main():
             df = pd.DataFrame({'misc/nupdates': [j],
                                'misc/total_timesteps': [total_num_steps],
                                'fps': int(total_num_steps / (end - start)),
+                               'sim_time': [total_sim_time],
+                               'train_time': [total_train_time],
                                'eprewmean': [np.mean(episode_rewards)],
+                               'epcostmean': [np.mean(episode_costs)],
                                'epsuccessmean': [np.mean(episode_success)],
                                'epcollisionmean': [np.mean(episode_collisions)],
                                'eppathlengthmean': [np.mean(episode_path_length)],
                                'loss/policy_entropy': dist_entropy,
                                'loss/policy_loss': action_loss,
-                               'loss/value_loss': value_loss})
+                               'loss/value_loss': value_loss,
+                               'loss/cost_value_loss': cost_value_loss})
 
             if os.path.exists(os.path.join(algo_args.output_dir, 'progress.csv')) and j > 20:
                 df.to_csv(os.path.join(algo_args.output_dir, 'progress.csv'),

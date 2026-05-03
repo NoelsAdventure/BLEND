@@ -34,15 +34,6 @@ class SpatialEdgeSelfAttn(nn.Module):
         # multi-head self attention
         self.multihead_attn=torch.nn.MultiheadAttention(self.attn_size, self.num_attn_heads)
 
-        # Add LoRA to the Q, K, V projections and the MHA out_proj
-        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
-            self.q_linear = LoRALinear(self.q_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
-            self.k_linear = LoRALinear(self.k_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
-            self.v_linear = LoRALinear(self.v_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
-            
-            # Use a LoRA adapter for the MultiheadAttention output to avoid AttributeErrors
-            self.multihead_attn_adapter = LoRAAdapter(self.attn_size, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
-
 
     # Given a list of sequence lengths, create a mask to indicate which indices are padded
     # e.x. Input: [3, 1, 4], max_human_num = 5
@@ -89,10 +80,6 @@ class SpatialEdgeSelfAttn(nn.Module):
         #z=self.multihead_attn(q, k, v, mask=attn_mask)
         z,_=self.multihead_attn(q, k, v, key_padding_mask=torch.logical_not(attn_mask)) # if we use pytorch builtin function
         
-        # Apply LoRA adapter to the attention output if enabled
-        if hasattr(self, 'multihead_attn_adapter'):
-            z = z + self.multihead_attn_adapter(z)
-            
         z=torch.transpose(z, dim0=0, dim1=1) # if we use pytorch builtin function
         return z
 
@@ -271,12 +258,6 @@ class EndRNN(RNNBase):
         # Output linear layer
         self.output_linear = nn.Linear(self.rnn_size, self.output_size)
 
-        if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
-            self.encoder_linear = LoRALinear(self.encoder_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
-            self.edge_attention_embed = LoRALinear(self.edge_attention_embed, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
-            self.output_linear = LoRALinear(self.output_linear, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
-
-
 
     def forward(self, robot_s, h_spatial_other, h, masks):
         '''
@@ -381,8 +362,6 @@ class selfAttn_merge_SRNN(nn.Module):
         if self.args.use_self_attn:
             self.spatial_attn = SpatialEdgeSelfAttn(args, self.config)
             spatial_linear_layer = init_(nn.Linear(512, 256))
-            if hasattr(self.config, 'lora') and getattr(self.config.lora, 'use_lora', False):
-                spatial_linear_layer = LoRALinear(spatial_linear_layer, rank=self.config.lora.rank, lora_alpha=self.config.lora.alpha)
             self.spatial_linear = nn.Sequential(spatial_linear_layer, nn.ReLU())
         else:
             raise NotImplementedError

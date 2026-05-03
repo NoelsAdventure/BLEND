@@ -40,12 +40,12 @@ class Config(object):
     
     env.val_size = 100
     env.test_size = 500
-    # note = f"LoraC_visi_invi"
-    note = f"LoraE_visi_invi_rank1"
+    # note = f"LoraF_invi_visi"
+    note = f"LoraF_invi_visi"
     # whether robot is visible to humans (whether humans respond to the robot's motion)
-    robot.visible = False # tag: 05/02/2024
+    robot.visible = True # tag: 05/02/2024
     # LoRA config
-    lora.rank = 1
+    lora.rank = 4
     lora.alpha = 128
     lora.use_lora = True
     #################### unfrequently tuned ######################## 

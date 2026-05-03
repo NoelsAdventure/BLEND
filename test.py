@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--lora_scale', type=float, default=1.0)
     parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy', 'none'], default='adaptive_discrepancy')
     parser.add_argument('--discrepancy_threshold', type=float, default=0.05, help='Threshold for classifying a human as aware/friendly based on discrepancy score')
+    parser.add_argument('--discrepancy_m', type=int, default=1, help='Number of consecutive times the score must be above threshold to classify as aware')
     parser.add_argument('--exp_id', type=str, default=None)
     parser.add_argument('--robot_visible', type=str, default=None, help='Override robot visibility: True or False')
     parser.add_argument('--human_num', type=int, default=None, help='Override number of humans')
@@ -226,8 +227,9 @@ def main():
     # Setup visualization save path if save_slides is enabled
     video_save_path = None
     if test_args.save_slides:
+        scenario = getattr(test_args, 'adaptive_lora_scenario', 'none')
         content = os.path.basename(model_dir_temp)
-        video_save_path = os.path.join("visualizations", content)
+        video_save_path = os.path.join("visualizations", content, scenario)
         os.makedirs(video_save_path, exist_ok=True)
         logging.info(f"Videos will be saved to {video_save_path}")
 

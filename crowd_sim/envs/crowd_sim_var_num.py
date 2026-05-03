@@ -533,7 +533,13 @@ class CrowdSimVarNum(CrowdSim):
 
         images = []
         for filename in filenames:
-            image = imageio.imread(filename)
+            try:
+                image = imageio.imread(filename)
+            except Exception as e:
+                print(f"Skipping corrupted/empty file {filename}: {e}")
+                if os.path.exists(filename):
+                    os.remove(filename)
+                continue
             if image.ndim == 2:
                 image = np.stack([image] * 3, axis=-1)
             elif image.shape[2] == 4:
@@ -679,6 +685,7 @@ class CrowdSimVarNum(CrowdSim):
         artists.append(robot)
 
         radius = self.robot.radius
+        robot_theta = self.robot.theta if self.robot.kinematics == 'unicycle' else np.arctan2(self.robot.vy, self.robot.vx)
 
         if self.robot.FOV < 2 * np.pi:
             FOVAng = self.robot_fov / 2
@@ -723,7 +730,6 @@ class CrowdSimVarNum(CrowdSim):
                 human_circles[i].set_color(c=ignore_color)
 
         arrowStartEnd = []
-        robot_theta = self.robot.theta if self.robot.kinematics == 'unicycle' else np.arctan2(self.robot.vy, self.robot.vx)
         arrowStartEnd.append(((robotX, robotY), (robotX + radius * np.cos(robot_theta), robotY + radius * np.sin(robot_theta))))
 
         for i, human in enumerate(self.humans):
