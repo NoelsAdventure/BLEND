@@ -8,6 +8,7 @@ CHECKPOINT="03400.pt"
 TEST_SIZE=500
 DISCREPANCY_THRESHOLD=0.15
 DISCREPANCY_M=1
+HUMAN_NUM=20
 
 # Logic to switch between test.py and visualize.py
 SCRIPT="test.py"
@@ -20,10 +21,10 @@ for arg in "$@"; do
     fi
 done
 
-SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
-BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "switching_discrepancy" "adaptive_discrepancy")
-# SCENARIOS=("seperate_mixed_5050" "seperate_ignorant_to_aware_step25")
-# BEHAVIOURS=("adaptive_discrepancy")
+# SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
+# BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "switching_discrepancy" "adaptive_discrepancy" "switching_discrepancynew" "adaptive_discrepancynew")
+SCENARIOS=("seperate_mixed_5050")
+BEHAVIOURS=("always_off" "always_on")
 
 for scenario in "${SCENARIOS[@]}"; do
     echo -e "\n\n=========================================================="
@@ -37,6 +38,7 @@ for scenario in "${SCENARIOS[@]}"; do
             --lora_behaviour "$behaviour" \
             --discrepancy_threshold $DISCREPANCY_THRESHOLD \
             --discrepancy_m $DISCREPANCY_M \
+            --human_num $HUMAN_NUM \
             --test_size $TEST_SIZE "$@"
     done
 done

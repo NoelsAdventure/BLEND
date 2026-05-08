@@ -63,13 +63,20 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         baseEnv = eval_envs.venv.unwrapped.envs[0].env
     time_limit = baseEnv.time_limit
 
-        # Experiment ID logic (moved up for video saving)
-    exp_id = getattr(test_args, 'exp_id', None)
-    if exp_id is None:
-        scenario = getattr(test_args, 'adaptive_lora_scenario', 'none')
-        behaviour = getattr(test_args, 'lora_behaviour', 'none')
-        if scenario != 'none' or behaviour != 'none':
-            exp_id = f"{scenario}_{behaviour}"
+    # Experiment ID logic (moved up for video saving)
+    user_exp_id = getattr(test_args, 'exp_id', None)
+    scenario = getattr(test_args, 'adaptive_lora_scenario', 'none')
+    behaviour = getattr(test_args, 'lora_behaviour', 'none')
+    
+    if scenario != 'none' or behaviour != 'none':
+        base_id = f"{scenario}_{behaviour}"
+        if user_exp_id:
+            exp_id = f"{base_id}_exp{user_exp_id}"
+        else:
+            exp_id = base_id
+    else:
+        if user_exp_id:
+            exp_id = f"exp{user_exp_id}"
         else:
             exp_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
 
@@ -154,7 +161,12 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # One group (half) is ignorant (False), the other is friendly (True)
             baseEnv.robot.visible_to_humans = [False if i < len(baseEnv.humans)//2 else True 
                                                for i in range(len(baseEnv.humans))]
-            print(f"Group scenario: {sum(not v for v in baseEnv.robot.visible_to_humans)} ignorant, {sum(baseEnv.robot.visible_to_humans)} friendly")
+            if k == 0:
+                msg = f"Group scenario: {sum(not v for v in baseEnv.robot.visible_to_humans)} ignorant, {sum(baseEnv.robot.visible_to_humans)} friendly"
+                if hasattr(pbar, 'write'):
+                    pbar.write(msg)
+                else:
+                    print(msg)
             
             # For visualization of baseline models in group scenario
             baseEnv.robot.lora_enabled = "lora" in model_dir.lower() or "alpha" in model_dir.lower()
@@ -164,7 +176,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             baseEnv.robot.visible = False
             
             # Start with LoRA OFF (if switching)
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
                 baseEnv.robot.lora_enabled = False
                 baseEnv.robot.lora_scale = 0.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -174,7 +186,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         elif scenario == 'seperate_all_ignorant':
             baseEnv.robot.visible = False
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
                 baseEnv.robot.lora_enabled = False
                 baseEnv.robot.lora_scale = 0.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -184,7 +196,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         elif scenario == 'seperate_all_aware':
             baseEnv.robot.visible = True
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
                 baseEnv.robot.lora_enabled = True
                 baseEnv.robot.lora_scale = 1.0
                 from rl.networks.network_utils import LoRALinear, LoRAAdapter
@@ -197,7 +209,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         human_above_threshold_count = {} # Track consecutive frames above threshold
         for human in baseEnv.humans:
             if human.last_prediction is not None and len(human.last_prediction) > 1:
-                prev_predictions[human.id] = human.last_prediction[1]
+                prev_predictions[human.id] = {
+                    'past_human': human.last_prediction[0],
+                    'past_pred': human.last_prediction[1]
+                }
 
         episode_steps = []
         episode_uncertainties = []
@@ -214,16 +229,31 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             for i, human in enumerate(baseEnv.humans):
                 if human.id in prev_predictions:
                     actual_human_pos = np.array([human.px, human.py])
-                    predicted_human_pos = prev_predictions[human.id]
+                    
+                    if isinstance(prev_predictions[human.id], dict):
+                        predicted_human_pos = prev_predictions[human.id]['past_pred']
+                        past_human_pos = prev_predictions[human.id]['past_human']
+                    else:
+                        predicted_human_pos = prev_predictions[human.id]
+                        past_human_pos = None
                     
                     # Calculate vectors
                     v_robot_pred = np.array(robot_pos) - predicted_human_pos
                     v_human_pred = actual_human_pos - predicted_human_pos
 
-                    # Calculate psi: angle between (P_robot - P_pred_before) and (P_human - P_pred_before)
-                    angle_robot = np.arctan2(v_robot_pred[1], v_robot_pred[0])
-                    angle_human = np.arctan2(v_human_pred[1], v_human_pred[0])
-                    psi = angle_human - angle_robot
+                    if 'discrepancynew' in behaviour and past_human_pos is not None:
+                        # New Formula: Angle between (past human -> past prediction) and (past prediction -> actual human)
+                        v_past_human_to_pred = predicted_human_pos - past_human_pos
+                        v_pred_to_actual = actual_human_pos - predicted_human_pos
+                        
+                        angle_past = np.arctan2(v_past_human_to_pred[1], v_past_human_to_pred[0])
+                        angle_actual = np.arctan2(v_pred_to_actual[1], v_pred_to_actual[0])
+                        psi = angle_actual - angle_past
+                    else:
+                        # Original logic: Angle between (robot -> pred) and (human -> pred)
+                        angle_robot = np.arctan2(v_robot_pred[1], v_robot_pred[0])
+                        angle_human = np.arctan2(v_human_pred[1], v_human_pred[0])
+                        psi = angle_human - angle_robot
 
                     # Calculate discrepancy score: ||P_human - P_pred_before|| * abs(sin(psi))
                     discrepancy_score = np.linalg.norm(v_human_pred) * abs(np.sin(psi))                        
@@ -246,7 +276,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # Adaptive LoRA Proof of Concept: Mid-episode switch for 'seperate_ignorant_to_aware_step25' scenario
             if scenario == 'seperate_ignorant_to_aware_step25' and stepCounter == 25:
                 baseEnv.robot.visible = True
-                if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
+                if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
                     if test_size <= 10:
                         print(f"\n>>> Step {stepCounter}: Switching to VISIBLE and LoRA ON (Adaptive PoC)")
                     baseEnv.robot.lora_scale = 1.0
@@ -257,7 +287,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                             module.dynamic_scale = 1.0
 
             # Continuous adaptive scale or majority-based switching
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
                 robot_pos = baseEnv.robot.get_position()
                 robot_theta = obs['robot_node'][0, 0, 6].item() # robot heading
                 total_weight = 0.0
@@ -379,7 +409,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         is_friendly = bool(baseEnv.robot.visible_to_humans[i])
                     else:
                         is_friendly = bool(baseEnv.robot.visible)
-                elif behaviour in ['switching_discrepancy', 'adaptive_discrepancy']:
+                elif behaviour in ['switching_discrepancy', 'adaptive_discrepancy', 'switching_discrepancynew', 'adaptive_discrepancynew']:
                     threshold = getattr(test_args, 'discrepancy_threshold', 0.05)
                     is_friendly = h_discrepancy_for_logic > threshold
                 
@@ -446,7 +476,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # Update prev_predictions for the next step
             for h in baseEnv.humans:
                 if h.last_prediction is not None and len(h.last_prediction) > 1:
-                    prev_predictions[h.id] = h.last_prediction[1]
+                    prev_predictions[h.id] = {
+                        'past_human': h.last_prediction[0],
+                        'past_pred': h.last_prediction[1]
+                    }
             
             # Track uncertainty for each step
             if aci_predicted_conformity_scores is not None and len(aci_predicted_conformity_scores) > 0:
