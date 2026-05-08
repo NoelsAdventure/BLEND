@@ -517,6 +517,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             print('')
             print('Reward={}'.format(episode_rew))
             print('Episode', k, 'ends in', stepCounter)
+            if video_save_path:
+                baseEnv.plot_step(video_save_path, is_final=True)
         
         all_path_len.append(path_len)
         too_close_ratios.append(too_close/stepCounter*100)

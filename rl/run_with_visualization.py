@@ -115,6 +115,7 @@ def run_with_visualization(actor_critic, eval_envs, num_processes, device, test_
         print('')
         print('Reward={}'.format(episode_rew))
         print('Episode', k, 'ends in', stepCounter)
+        baseEnv.plot_step(gif_save_path, is_final=True)
 
         if isinstance(infos[0]['info'], ReachGoal):
             # success += 1

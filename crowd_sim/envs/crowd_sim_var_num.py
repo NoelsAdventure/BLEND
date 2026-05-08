@@ -561,10 +561,10 @@ class CrowdSimVarNum(CrowdSim):
         writer.close()
 
 
-    def plot_step(self, save_path):
-        self.plot_scenario(-1, save_path) 
+    def plot_step(self, save_path, is_final=False):
+        self.plot_scenario(-1, save_path, is_final=is_final) 
 
-    def plot_scenario(self, alert_agent_id, save_path):
+    def plot_scenario(self, alert_agent_id, save_path, is_final=False):
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 
         # Robot color: red when aggressive (lora_scale = 1), yellow when conservative (lora_scale = 0)
@@ -608,6 +608,7 @@ class CrowdSimVarNum(CrowdSim):
         artists = []
 
         # Plot robot trail with gradual color change based on lora_scale
+        lora_scales = []
         if hasattr(self, 'robot_path') and len(self.robot_path) > 1:
             for i in range(len(self.robot_path) - 1):
                 p1 = self.robot_path[i]
@@ -627,12 +628,15 @@ class CrowdSimVarNum(CrowdSim):
                     pos1 = p1
                     pos2 = p2
                     l_scale = getattr(self.robot, 'lora_scale', 0.0)
+                
+                lora_scales.append(l_scale)
 
                 # Calculate color for this segment
                 s = np.clip(l_scale, 0, 1)
                 segment_color = (1.0, 1.0 - s, 0.0)
                 
-                segment = mlines.Line2D([pos1[0], pos2[0]], [pos1[1], pos2[1]], color=segment_color, linestyle=':', alpha=0.5, linewidth=1)
+                # Robot path twice the size (linewidth=2 instead of 1)
+                segment = mlines.Line2D([pos1[0], pos2[0]], [pos1[1], pos2[1]], color=segment_color, linestyle=':', alpha=0.5, linewidth=2)
                 ax.add_artist(segment)
                 artists.append(segment)
 
@@ -646,12 +650,19 @@ class CrowdSimVarNum(CrowdSim):
             start_marker = mlines.Line2D([start_pos[0]], [start_pos[1]], color='purple', marker='^', linestyle='None', markersize=12, label='Start', alpha=0.8)
             ax.add_artist(start_marker)
             artists.append(start_marker)
-        # Display Path Length and LoRA Scale on top left
-        info_text = f"Path Length: {self.cumulative_path_length:.2f}m"
-        if hasattr(self.robot, 'lora_scale'):
-            info_text += f"\nLoRA Scale: {self.robot.lora_scale:.2f}"
         
-        ax.text(-9.5, 9.5, info_text, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+        # Display Path Length and LoRA Scale on top left
+        if is_final:
+            avg_lora_scale = np.mean(lora_scales) if lora_scales else 0.0
+            info_text = f"Path Length: {self.cumulative_path_length:.2f}m\nAvg LoRA Scale: {avg_lora_scale:.2f}"
+            info_fontsize = 20
+        else:
+            info_text = f"Path Length: {self.cumulative_path_length:.2f}m"
+            if hasattr(self.robot, 'lora_scale'):
+                info_text += f"\nLoRA Scale: {self.robot.lora_scale:.2f}"
+            info_fontsize = 12
+        
+        ax.text(-9.5, 9.5, info_text, fontsize=info_fontsize, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
         sensor_range = plt.Circle(self.robot.get_position(), self.robot.sensor_range + self.robot.radius + self.config.humans.radius, fill=False, color=range_color, linestyle='--')
         ax.add_artist(sensor_range)
@@ -661,23 +672,24 @@ class CrowdSimVarNum(CrowdSim):
         ax.add_artist(goal)
         artists.append(goal)
 
-        for human in self.humans:
-            if not self.config.aci_related.only_prediction_line:
-                buffer_circle = plt.Circle(human.get_position(), human.radius + self.config.aci_related.current_position_buffer, fill=True, linewidth=1.5, color=buffer_color, alpha=buffer_alpha_near)
-                ax.add_artist(buffer_circle)
-                artists.append(buffer_circle)
-            if human.last_prediction is None: 
-                continue
-            if self.config.aci_related.only_circular:
-                continue
-            for i, point in enumerate(human.last_prediction[1:]):
-                buffer_alpha = buffer_alpha_near if i < 2 else buffer_alpha_away
+        if not is_final:
+            for human in self.humans:
                 if not self.config.aci_related.only_prediction_line:
-                    circle = plt.Circle(point, human.last_aci_predicted_conformity_score[i] + human.radius, fill=True, linewidth=1.5, color=buffer_color, alpha=buffer_alpha)
-                else:
-                    circle = plt.Circle(point, human.radius, fill=True, linewidth=1.5, color=buffer_color, alpha=buffer_alpha_away*1.5)
-                ax.add_artist(circle)
-                artists.append(circle)
+                    buffer_circle = plt.Circle(human.get_position(), human.radius + self.config.aci_related.current_position_buffer, fill=True, linewidth=1.5, color=buffer_color, alpha=buffer_alpha_near)
+                    ax.add_artist(buffer_circle)
+                    artists.append(buffer_circle)
+                if human.last_prediction is None: 
+                    continue
+                if self.config.aci_related.only_circular:
+                    continue
+                for i, point in enumerate(human.last_prediction[1:]):
+                    buffer_alpha = buffer_alpha_near if i < 2 else buffer_alpha_away
+                    if not self.config.aci_related.only_prediction_line:
+                        circle = plt.Circle(point, human.last_aci_predicted_conformity_score[i] + human.radius, fill=True, linewidth=1.5, color=buffer_color, alpha=buffer_alpha)
+                    else:
+                        circle = plt.Circle(point, human.radius, fill=True, linewidth=1.5, color=buffer_color, alpha=buffer_alpha_away*1.5)
+                    ax.add_artist(circle)
+                    artists.append(circle)
 
         robotX, robotY = self.robot.get_position()
         robot = plt.Circle((robotX, robotY), self.robot.radius, fill=True, color=robot_color)
@@ -709,32 +721,34 @@ class CrowdSimVarNum(CrowdSim):
             artists.append(FOVLine1)
             artists.append(FOVLine2)
 
-        human_circles = [plt.Circle(human.get_position(), human.radius, fill=True) for human in self.humans]
-        actual_arena_size = self.arena_size + 0.5
+        if not is_final:
+            human_circles = [plt.Circle(human.get_position(), human.radius, fill=True) for human in self.humans]
+            actual_arena_size = self.arena_size + 0.5
 
-        for i in range(len(self.humans)):
-            ax.add_artist(human_circles[i])
-            artists.append(human_circles[i])
-            
-            # Check if robot is visible to this specific human (Friendly vs Ignorant)
-            is_visible = False
-            if hasattr(self.robot, 'visible_to_humans'):
-                is_visible = self.robot.visible_to_humans[i]
-            else:
-                is_visible = self.robot.visible
+            for i in range(len(self.humans)):
+                ax.add_artist(human_circles[i])
+                artists.append(human_circles[i])
+                
+                # Check if robot is visible to this specific human (Friendly vs Ignorant)
+                is_visible = False
+                if hasattr(self.robot, 'visible_to_humans'):
+                    is_visible = self.robot.visible_to_humans[i]
+                else:
+                    is_visible = self.robot.visible
 
-            # Green: Friendly (can see robot); Blue: Ignorant (cannot see robot)
-            if is_visible:
-                human_circles[i].set_color(c=aware_color)
-            else:
-                human_circles[i].set_color(c=ignore_color)
+                # Green: Friendly (can see robot); Blue: Ignorant (cannot see robot)
+                if is_visible:
+                    human_circles[i].set_color(c=aware_color)
+                else:
+                    human_circles[i].set_color(c=ignore_color)
 
         arrowStartEnd = []
         arrowStartEnd.append(((robotX, robotY), (robotX + radius * np.cos(robot_theta), robotY + radius * np.sin(robot_theta))))
 
-        for i, human in enumerate(self.humans):
-            theta = np.arctan2(human.vy, human.vx)
-            arrowStartEnd.append(((human.px, human.py), (human.px + radius * np.cos(theta), human.py + radius * np.sin(theta))))
+        if not is_final:
+            for i, human in enumerate(self.humans):
+                theta = np.arctan2(human.vy, human.vx)
+                arrowStartEnd.append(((human.px, human.py), (human.px + radius * np.cos(theta), human.py + radius * np.sin(theta))))
 
         arrows = []
         for i, arrow in enumerate(arrowStartEnd):
