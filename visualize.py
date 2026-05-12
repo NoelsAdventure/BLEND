@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--test_size', type=int, default=1, help='Number of episodes to test')
     parser.add_argument('--adaptive_lora_scenario', type=str, choices=['seperate_ignorant_to_aware_step25', 'seperate_mixed_5050', 'seperate_all_ignorant', 'seperate_all_aware', 'none'], default='none')
     
+    parser.add_argument("--discrepancy_m", type=int, default=1, help="Number of consecutive times the score must be above threshold to classify as aware")
     # Use parse_known_args to ignore arguments meant for the environment
     test_args, unknown = parser.parse_known_args()
     

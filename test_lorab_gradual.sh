@@ -7,7 +7,7 @@ MODEL_DIR="trained_models/LoraF_invi_visi_rank_1"
 CHECKPOINT="03400.pt"
 
 # Array of scales: 0.0, 0.2, 0.4, ..., 2.0
-scales=("1.0" "1.1")
+scales=("1.0")
 # scales=("1.0")
 
 for scale in "${scales[@]}"; do

@@ -16,15 +16,15 @@ for arg in "$@"; do
     if [ "$arg" == "--visualize" ]; then
         SCRIPT="visualize.py"
         # When visualizing, we typically want fewer episodes to save time
-        TEST_SIZE=3
+        TEST_SIZE=1
         break
     fi
 done
 
-# SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
-# BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "switching_discrepancy" "adaptive_discrepancy" "switching_discrepancynew" "adaptive_discrepancynew")
-SCENARIOS=("seperate_mixed_5050")
-BEHAVIOURS=("always_off" "always_on")
+SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
+BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "switching_discrepancy" "adaptive_discrepancy" "switching_discrepancynew" "adaptive_discrepancynew")
+# SCENARIOS=("seperate_mixed_5050")
+# BEHAVIOURS=("always_off" "always_on")
 
 for scenario in "${SCENARIOS[@]}"; do
     echo -e "\n\n=========================================================="

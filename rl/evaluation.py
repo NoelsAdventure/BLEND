@@ -517,8 +517,6 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             print('')
             print('Reward={}'.format(episode_rew))
             print('Episode', k, 'ends in', stepCounter)
-            if video_save_path:
-                baseEnv.plot_step(video_save_path, is_final=True)
         
         all_path_len.append(path_len)
         too_close_ratios.append(too_close/stepCounter*100)
@@ -584,7 +582,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 print(f"\n{summary_str}")
 
         if video_save_path:
-            baseEnv.animate_episode(video_save_path, f"{exp_id}_ep{k}_{episode_result}")
+            baseEnv.animate_episode(video_save_path, f"{exp_id}_ep{k}_{episode_result}", outcome=episode_result, avg_lora_scale=avg_lora_scale)
 
     if not visualize:
         print() # Move to next line after progress bar
