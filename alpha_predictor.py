@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 
-class AlphaPredictor(nn.Module):
+class FriendlyPredictor(nn.Module):
     def __init__(self, human_dim, robot_dim, hidden_dim=64):
-        super(AlphaPredictor, self).__init__()
+        super(FriendlyPredictor, self).__init__()
         # 1. Input Projections
         self.query_proj = nn.Linear(human_dim, hidden_dim)
         self.key_proj = nn.Linear(robot_dim, hidden_dim)
@@ -13,12 +13,12 @@ class AlphaPredictor(nn.Module):
         # Processes the attended human features
         self.gru = nn.GRU(hidden_dim, hidden_dim, batch_first=True)
         
-        # 3. Output Layer: Linear to predict scale value
+        # 3. Output Layer: Linear to predict friendliness (binary)
         self.fc = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, 1),
-            nn.Sigmoid() # Scale factor is between 0 and 1
+            nn.Sigmoid() # Friendliness probability between 0 and 1
         )
         
     def forward(self, human_states, robot_state):
@@ -45,9 +45,8 @@ class AlphaPredictor(nn.Module):
         # 2. GRU Processing
         gru_out, _ = self.gru(attended_humans) # (B, N, H)
         
-        # 3. Global Pooling (Mean over humans)
-        pooled = torch.mean(gru_out, dim=1) # (B, H)
+        # 3. Output Prediction (PER HUMAN)
+        # Apply the classifier to each human's feature from the GRU
+        out = self.fc(gru_out) # (B, N, 1)
         
-        # 4. Output Prediction
-        out = self.fc(pooled)
-        return out.squeeze(-1) # Predict scalar scale
+        return out.squeeze(-1) # Predict friendliness probability for each human (B, N)

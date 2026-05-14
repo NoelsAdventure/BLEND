@@ -7,6 +7,167 @@ from datetime import datetime
 import uuid
 
 from crowd_sim.envs.utils.info import *
+from alpha_predictor import FriendlyPredictor
+
+
+def _maybe_load_friendly_predictor(behaviour, model_dir, device, logging):
+    if '_pred' not in behaviour:
+        return None
+    predictor_path = os.path.join(model_dir, 'friendly_predictor.pth')
+    if not os.path.exists(predictor_path):
+        raise FileNotFoundError(f"FriendlyPredictor weights not found at {predictor_path}")
+
+    metrics_path = os.path.join(model_dir, 'friendly_predictor_metrics.json')
+    m = {}
+    if os.path.exists(metrics_path):
+        with open(metrics_path, 'r') as mf:
+            m = json.load(mf)
+
+    # Dims come from the metrics sidecar; fall back to the historical (13, 2)
+    # for checkpoints trained before the sidecar carried them.
+    human_dim = int(m.get('human_dim', 13))
+    robot_dim = int(m.get('robot_dim', 2))
+
+    predictor = FriendlyPredictor(human_dim=human_dim, robot_dim=robot_dim).to(device)
+    state = torch.load(predictor_path, map_location=device)
+
+    # Fail loudly on dim mismatch instead of silently mis-loading.
+    saved_human_dim = state['query_proj.weight'].shape[1]
+    saved_robot_dim = state['key_proj.weight'].shape[1]
+    if (saved_human_dim, saved_robot_dim) != (human_dim, robot_dim):
+        raise RuntimeError(
+            f"FriendlyPredictor dim mismatch: checkpoint at {predictor_path} has "
+            f"(human_dim={saved_human_dim}, robot_dim={saved_robot_dim}) but "
+            f"metrics sidecar says ({human_dim}, {robot_dim}). Re-train or fix the sidecar."
+        )
+
+    predictor.load_state_dict(state)
+    predictor.eval()
+    logging.info(f"Loaded FriendlyPredictor from {predictor_path} "
+                 f"(human_dim={human_dim}, robot_dim={robot_dim})")
+
+    if m:
+        msg = (f"FriendlyPredictor val metrics @ epoch {m.get('epoch', '?')}: "
+               f"acc={m.get('val_accuracy', float('nan')):.4f} "
+               f"f1={m.get('val_f1', float('nan')):.4f} "
+               f"prec={m.get('val_precision', float('nan')):.4f} "
+               f"rec={m.get('val_recall', float('nan')):.4f} "
+               f"(TP={m.get('val_tp', '?')}, FP={m.get('val_fp', '?')}, "
+               f"TN={m.get('val_tn', '?')}, FN={m.get('val_fn', '?')}, "
+               f"N={m.get('val_size', '?')}, thr={m.get('threshold', '?')})")
+        logging.info(msg)
+        print(msg)
+    else:
+        logging.warning(f"No friendly_predictor_metrics.json found alongside {predictor_path}; "
+                        f"retrain with the updated train_alpha_predictor.py to populate it.")
+    return predictor
+
+
+def _compute_pred_friendly_probs(friendly_predictor, out_pred, aci_predicted_conformity_scores,
+                                 baseEnv, r_state_vec, device, max_humans=20, num_pred_steps=5):
+    # max_humans=20 mirrors train_alpha_predictor.py FriendlyDataset.
+    # num_pred_steps=5 mirrors crowd_sim/envs/utils/human.py::pred_horizon_aci.
+    if friendly_predictor is None:
+        return {}
+
+    # aci_predicted_conformity_scores arrives as (num_humans, T) from the env
+    # but is rewrapped to (1, num_humans, T) before this point (see ~line 239).
+    # Peel any leading env axes so we end up with a 2-D (num_humans, T) view.
+    if aci_predicted_conformity_scores is None:
+        uncs_2d = None
+    else:
+        uncs = np.asarray(aci_predicted_conformity_scores)
+        while uncs.ndim > 2:
+            uncs = uncs[0]
+        uncs_2d = uncs  # (num_humans, T)
+
+    pad_dim = friendly_predictor.query_proj.in_features
+
+    h_states_list = []
+    for i in range(max_humans):
+        if i < len(out_pred):
+            traj = out_pred[i].tolist()
+            if uncs_2d is not None and i < uncs_2d.shape[0]:
+                u_row = [float(x) for x in uncs_2d[i].tolist()]
+            else:
+                u_row = [0.0] * num_pred_steps
+            # Pad / truncate to exactly num_pred_steps so the feature width is stable.
+            if len(u_row) < num_pred_steps:
+                u_row = u_row + [0.0] * (num_pred_steps - len(u_row))
+            elif len(u_row) > num_pred_steps:
+                u_row = u_row[:num_pred_steps]
+            h_states_list.append(traj + u_row)
+        else:
+            h_states_list.append([0.0] * pad_dim)
+
+    h_states = torch.tensor([h_states_list], dtype=torch.float32).to(device)
+    r_state = torch.tensor([[float(x) for x in r_state_vec]], dtype=torch.float32).to(device)
+
+    with torch.no_grad():
+        probs = friendly_predictor(h_states, r_state).squeeze(0).cpu().numpy()
+
+    robot_pos = baseEnv.robot.get_position()
+    sorted_humans = sorted(
+        baseEnv.humans,
+        key=lambda h: np.linalg.norm(np.array(h.get_position()) - np.array(robot_pos)),
+    )
+    result = {}
+    for i, h in enumerate(sorted_humans):
+        if i < max_humans:
+            result[h.id] = float(probs[i])
+    return result
+
+
+def _compute_is_friendly(behaviour, human, human_idx, baseEnv,
+                        discrepancy_scores, pred_friendly_probs,
+                        human_above_threshold_count, test_args):
+    if hasattr(baseEnv.robot, 'visible_to_humans'):
+        actual_friendly = bool(baseEnv.robot.visible_to_humans[human_idx])
+    else:
+        actual_friendly = bool(baseEnv.robot.visible)
+
+    if '_gt' in behaviour:
+        is_friendly = actual_friendly
+    elif '_pred' in behaviour:
+        prob = pred_friendly_probs.get(human.id, 0.0)
+        is_friendly = prob > 0.5
+    else:
+        score = discrepancy_scores.get(human.id, 0.0)
+        threshold = getattr(test_args, 'discrepancy_threshold', 0.05)
+        m_threshold = getattr(test_args, 'discrepancy_m', 1)
+        if score > threshold:
+            human_above_threshold_count[human.id] = human_above_threshold_count.get(human.id, 0) + 1
+        else:
+            human_above_threshold_count[human.id] = 0
+        is_friendly = human_above_threshold_count.get(human.id, 0) >= m_threshold
+
+    return is_friendly, actual_friendly
+
+
+def _has_lora_modules(actor_critic):
+    """True iff the model actually carries LoRA adapters. Replaces the older
+    string-match-on-model_dir heuristic so behaviour doesn't depend on naming.
+    """
+    if actor_critic is None:
+        return False
+    from rl.networks.network_utils import LoRALinear, LoRAAdapter
+    return any(isinstance(m, (LoRALinear, LoRAAdapter)) for m in actor_critic.modules())
+
+
+def _apply_lora_scale(actor_critic, baseEnv, scale):
+    """Single source of truth for keeping env-side state and every LoRA
+    module's dynamic_scale in lock-step. Use this everywhere LoRA scale is
+    set — avoids the lock-step drift class of bug.
+    """
+    scale = float(scale)
+    baseEnv.robot.lora_scale = scale
+    baseEnv.robot.lora_enabled = (scale > 0)
+    if actor_critic is None:
+        return
+    from rl.networks.network_utils import LoRALinear, LoRAAdapter
+    for module in actor_critic.modules():
+        if isinstance(module, (LoRALinear, LoRAAdapter)):
+            module.dynamic_scale = scale
 
 
 def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False, test_args=None, video_save_path=None):
@@ -22,6 +183,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     fp = 0
     fn = 0
     all_discrepancy_data = {'aware': [], 'ignorant': []}
+
+    behaviour = getattr(test_args, 'lora_behaviour', 'none')
+    friendly_predictor = _maybe_load_friendly_predictor(behaviour, model_dir, device, logging)
 
     if config.robot.policy not in ['orca', 'social_force']:
         eval_recurrent_hidden_states = {}
@@ -135,31 +299,22 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
         # Behaviour Overrides
         if behaviour == 'always_on':
-            baseEnv.robot.lora_enabled = True
-            baseEnv.robot.lora_scale = 1.0
-            from rl.networks.network_utils import LoRALinear, LoRAAdapter
-            for module in actor_critic.modules():
-                if isinstance(module, (LoRALinear, LoRAAdapter)):
-                    module.dynamic_scale = 1.0
+            _apply_lora_scale(actor_critic, baseEnv, 1.0)
         elif behaviour == 'always_off':
-            baseEnv.robot.lora_enabled = False
-            baseEnv.robot.lora_scale = 0.0
-            from rl.networks.network_utils import LoRALinear, LoRAAdapter
-            for module in actor_critic.modules():
-                if isinstance(module, (LoRALinear, LoRAAdapter)):
-                    module.dynamic_scale = 0.0
+            _apply_lora_scale(actor_critic, baseEnv, 0.0)
         elif behaviour == 'fixed_scale':
-            scale = getattr(test_args, 'lora_scale', 1.0)
-            baseEnv.robot.lora_enabled = (scale > 0)
-            baseEnv.robot.lora_scale = scale
-            from rl.networks.network_utils import LoRALinear, LoRAAdapter
-            for module in actor_critic.modules():
-                if isinstance(module, (LoRALinear, LoRAAdapter)):
-                    module.dynamic_scale = scale
-            
+            _apply_lora_scale(actor_critic, baseEnv, getattr(test_args, 'lora_scale', 1.0))
+
+
+        # Behaviours that drive the per-step adaptive/switching loop.
+        _ADAPTIVE_BEHAVIOURS = {
+            'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred',
+            'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
+        }
+
         if scenario == 'seperate_mixed_5050':
             # One group (half) is ignorant (False), the other is friendly (True)
-            baseEnv.robot.visible_to_humans = [False if i < len(baseEnv.humans)//2 else True 
+            baseEnv.robot.visible_to_humans = [False if i < len(baseEnv.humans)//2 else True
                                                for i in range(len(baseEnv.humans))]
             if k == 0:
                 msg = f"Group scenario: {sum(not v for v in baseEnv.robot.visible_to_humans)} ignorant, {sum(baseEnv.robot.visible_to_humans)} friendly"
@@ -167,42 +322,34 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                     pbar.write(msg)
                 else:
                     print(msg)
-            
-            # For visualization of baseline models in group scenario
-            baseEnv.robot.lora_enabled = "lora" in model_dir.lower() or "alpha" in model_dir.lower()
+
+            # Mirror the other scenario branches: explicitly init LoRA state
+            # for switching/adaptive behaviours so the modules don't carry a
+            # stale dynamic_scale from the previous episode. Aggressive (1.0)
+            # default — the per-step loop will refine after step 0 anyway.
+            if behaviour in _ADAPTIVE_BEHAVIOURS:
+                _apply_lora_scale(actor_critic, baseEnv, 1.0)
+            else:
+                # Non-adaptive behaviour: render flag reflects whether the
+                # model actually carries LoRA modules, not a path-string match.
+                baseEnv.robot.lora_enabled = _has_lora_modules(actor_critic)
 
         elif scenario == 'seperate_ignorant_to_aware_step25':
             # Start invisible (Ignorant humans)
             baseEnv.robot.visible = False
-            
-            # Start with LoRA OFF (if switching)
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
-                baseEnv.robot.lora_enabled = False
-                baseEnv.robot.lora_scale = 0.0
-                from rl.networks.network_utils import LoRALinear, LoRAAdapter
-                for module in actor_critic.modules():
-                    if isinstance(module, (LoRALinear, LoRAAdapter)):
-                        module.dynamic_scale = 0.0
+            # Start with LoRA OFF for switching/adaptive — will flip ON at step 25.
+            if behaviour in _ADAPTIVE_BEHAVIOURS:
+                _apply_lora_scale(actor_critic, baseEnv, 0.0)
 
         elif scenario == 'seperate_all_ignorant':
             baseEnv.robot.visible = False
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
-                baseEnv.robot.lora_enabled = False
-                baseEnv.robot.lora_scale = 0.0
-                from rl.networks.network_utils import LoRALinear, LoRAAdapter
-                for module in actor_critic.modules():
-                    if isinstance(module, (LoRALinear, LoRAAdapter)):
-                        module.dynamic_scale = 0.0
+            if behaviour in _ADAPTIVE_BEHAVIOURS:
+                _apply_lora_scale(actor_critic, baseEnv, 0.0)
 
         elif scenario == 'seperate_all_aware':
             baseEnv.robot.visible = True
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
-                baseEnv.robot.lora_enabled = True
-                baseEnv.robot.lora_scale = 1.0
-                from rl.networks.network_utils import LoRALinear, LoRAAdapter
-                for module in actor_critic.modules():
-                    if isinstance(module, (LoRALinear, LoRAAdapter)):
-                        module.dynamic_scale = 1.0
+            if behaviour in _ADAPTIVE_BEHAVIOURS:
+                _apply_lora_scale(actor_critic, baseEnv, 1.0)
 
         # Initialize prev_predictions before the loop for tracking discrepancy
         prev_predictions = {}
@@ -221,6 +368,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         episode_friendly_flags = []
         while not done:
             stepCounter = stepCounter + 1
+            
+            # Robot features in robot_node: [px, py, radius, gx, gy, v_pref, theta]
+            # Robot features in temporal_edges: [vx, vy]
+            r_node = obs['robot_node'][0, 0].cpu().numpy()
+            r_vel = obs['temporal_edges'][0, 0].cpu().numpy()
             
             # Calculate Prediction Discrepancy Scores to guess who is aware/ignorant
             discrepancy_scores = {}
@@ -241,16 +393,23 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                     v_robot_pred = np.array(robot_pos) - predicted_human_pos
                     v_human_pred = actual_human_pos - predicted_human_pos
 
+                    # The two `_discrepancy*` variants compute psi differently
+                    # but share downstream thresholding in _compute_is_friendly:
+                    #   _discrepancy    — angle between (robot→pred) and (human→pred).
+                    #                     Asks "did the human deviate away from
+                    #                     the robot relative to the prediction?"
+                    #   _discrepancynew — angle between past-human-motion and
+                    #                     (pred→actual). Asks "did the human's
+                    #                     turn rate / direction shift between
+                    #                     the past step and now?"
                     if 'discrepancynew' in behaviour and past_human_pos is not None:
-                        # New Formula: Angle between (past human -> past prediction) and (past prediction -> actual human)
                         v_past_human_to_pred = predicted_human_pos - past_human_pos
                         v_pred_to_actual = actual_human_pos - predicted_human_pos
-                        
+
                         angle_past = np.arctan2(v_past_human_to_pred[1], v_past_human_to_pred[0])
                         angle_actual = np.arctan2(v_pred_to_actual[1], v_pred_to_actual[0])
                         psi = angle_actual - angle_past
                     else:
-                        # Original logic: Angle between (robot -> pred) and (human -> pred)
                         angle_robot = np.arctan2(v_robot_pred[1], v_robot_pred[0])
                         angle_human = np.arctan2(v_human_pred[1], v_human_pred[0])
                         psi = angle_human - angle_robot
@@ -276,71 +435,63 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # Adaptive LoRA Proof of Concept: Mid-episode switch for 'seperate_ignorant_to_aware_step25' scenario
             if scenario == 'seperate_ignorant_to_aware_step25' and stepCounter == 25:
                 baseEnv.robot.visible = True
-                if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
+                if behaviour in _ADAPTIVE_BEHAVIOURS:
                     if test_size <= 10:
                         print(f"\n>>> Step {stepCounter}: Switching to VISIBLE and LoRA ON (Adaptive PoC)")
-                    baseEnv.robot.lora_scale = 1.0
-                        
-                    from rl.networks.network_utils import LoRALinear, LoRAAdapter
-                    for module in actor_critic.modules():
-                        if isinstance(module, (LoRALinear, LoRAAdapter)):
-                            module.dynamic_scale = 1.0
+                    _apply_lora_scale(actor_critic, baseEnv, 1.0)
+
+            # Cache of per-step is_friendly decisions, reused by the JSON logger below
+            step_is_friendly_by_id = {}
 
             # Continuous adaptive scale or majority-based switching
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
                 robot_pos = baseEnv.robot.get_position()
                 robot_theta = obs['robot_node'][0, 0, 6].item() # robot heading
+
+                # Match the RL policy's robot input: concat([temporal_edges,
+                # robot_node]) = [vx, vy, px, py, radius, gx, gy, v_pref, theta]
+                # (see rl/networks/networkss.py:197).
+                r_state_vec = [
+                    float(r_vel[0]), float(r_vel[1]),
+                    float(r_node[0]), float(r_node[1]), float(r_node[2]),
+                    float(r_node[3]), float(r_node[4]), float(r_node[5]),
+                    float(r_node[6]),
+                ]
+                pred_friendly_probs = _compute_pred_friendly_probs(
+                    friendly_predictor, out_pred, aci_predicted_conformity_scores,
+                    baseEnv, r_state_vec, device,
+                )
+
                 total_weight = 0.0
                 friendly_weight = 0.0
                 friendly_in_range = 0
                 humans_in_range_count = 0
-                
+
                 for i, human in enumerate(baseEnv.humans):
                     dist = np.linalg.norm(np.array(human.get_position()) - np.array(robot_pos))
                     if dist <= baseEnv.robot.sensor_range:
                         humans_in_range_count += 1
-                        
-                        # Awareness Detection
-                        if '_gt' in behaviour:
-                            # Ground Truth awareness
-                            if hasattr(baseEnv.robot, 'visible_to_humans'):
-                                is_friendly = baseEnv.robot.visible_to_humans[i]
-                            else:
-                                is_friendly = baseEnv.robot.visible
-                            actual_friendly = is_friendly
-                        else:
-                            # Discrepancy-based awareness
-                            score = discrepancy_scores.get(human.id, 0.0)
-                            threshold = getattr(test_args, 'discrepancy_threshold', 0.05)
-                            m_threshold = getattr(test_args, 'discrepancy_m', 1)
-                            
-                            if score > threshold:
-                                human_above_threshold_count[human.id] = human_above_threshold_count.get(human.id, 0) + 1
-                            else:
-                                human_above_threshold_count[human.id] = 0
-                                
-                            is_friendly = human_above_threshold_count.get(human.id, 0) >= m_threshold
-                            
-                            # Track accuracy against ground truth for statistics
-                            actual_friendly = False
-                            if hasattr(baseEnv.robot, 'visible_to_humans'):
-                                actual_friendly = baseEnv.robot.visible_to_humans[i]
-                            else:
-                                actual_friendly = baseEnv.robot.visible
-                                
+
+                        is_friendly, actual_friendly = _compute_is_friendly(
+                            behaviour, human, i, baseEnv,
+                            discrepancy_scores, pred_friendly_probs,
+                            human_above_threshold_count, test_args,
+                        )
+                        step_is_friendly_by_id[human.id] = bool(is_friendly)
+
+                        if '_pred' in behaviour or '_discrepancy' in behaviour:
                             total_awareness_predictions += 1
                             if is_friendly == actual_friendly:
                                 correct_awareness_predictions += 1
-                            
                             if is_friendly and actual_friendly:
                                 tp += 1
                             elif is_friendly and not actual_friendly:
                                 fp += 1
                             elif not is_friendly and actual_friendly:
                                 fn += 1
-                            elif not is_friendly and not actual_friendly:
+                            else:
                                 tn += 1
-                        
+
                         if is_friendly:
                             friendly_in_range += 1
                             
@@ -361,65 +512,68 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         if is_friendly:
                             friendly_weight += weight
                 
-                # Calculate target lora_scale
+                # Calculate target lora_scale.
+                # No humans in range, or (for adaptive) every in-range human is
+                # ~directly behind the robot (total_weight ≈ 0), means there's
+                # no crowd actually constraining the robot's path. Default to
+                # aggressive (scale = 1.0) rather than snapping LoRA off — the
+                # robot doesn't know yet if humans will appear ahead, and being
+                # ready to handle oblivious ones is the safer prior.
                 if humans_in_range_count == 0:
-                    target_scale = 0.0  # Default to LoRA OFF if no humans in range
-                    ratio = 0.0
+                    target_scale = 1.0
+                    ratio = 1.0
                 elif 'switching' in behaviour:
                     ratio = friendly_in_range / humans_in_range_count
                     target_scale = 1.0 if ratio > 0.5 else 0.0
-                else: # adaptive
-                    ratio = friendly_weight / total_weight if total_weight > 0 else 0.0
-                    target_scale = ratio
+                else:  # adaptive
+                    if total_weight > 0:
+                        ratio = friendly_weight / total_weight
+                        target_scale = ratio
+                    else:
+                        # All in-range humans are behind the robot — direction
+                        # weights collapsed to ~0. Treat the same as empty.
+                        target_scale = 1.0
+                        ratio = 1.0
                 
-                # Apply change if scale differs significantly
+                # Apply change if scale differs significantly (deadband ~0.01
+                # prevents per-step jitter on near-stable targets).
                 if abs(target_scale - baseEnv.robot.lora_scale) > 0.01:
                     if test_size <= 10:
                         msg = f"Ratio {ratio:.2f}"
                         if 'switching' in behaviour:
                             msg = f"Ratio {friendly_in_range}/{humans_in_range_count}={ratio:.2f}"
                         print(f"\n>>> Step {stepCounter}: {msg}. Target Scale = {target_scale:.2f}")
-                    
-                    baseEnv.robot.lora_scale = target_scale
-                    baseEnv.robot.lora_enabled = (target_scale > 0)
-                    
-                    from rl.networks.network_utils import LoRALinear, LoRAAdapter
-                    for module in actor_critic.modules():
-                        if isinstance(module, (LoRALinear, LoRAAdapter)):
-                            module.dynamic_scale = target_scale
+                    _apply_lora_scale(actor_critic, baseEnv, target_scale)
             
             # Collect data for the CURRENT step before taking the next action
-            # Robot features in robot_node: [px, py, radius, gx, gy, v_pref, theta]
-            # Robot features in temporal_edges: [vx, vy]
-            r_node = obs['robot_node'][0, 0].cpu().numpy()
-            r_vel = obs['temporal_edges'][0, 0].cpu().numpy()
             
             # Current human states
             human_states = []
             for i, h in enumerate(baseEnv.humans):
-                # Determine if this human was considered "friendly" in the current step
-                # (re-calculating awareness here to match the logic used in the scaling step)
-                is_friendly = False
-                
-                # Check if discrepancy is actually available for this human
+                # Always check for discrepancy if available
                 h_discrepancy_raw = discrepancy_scores.get(h.id)
-                h_discrepancy_for_logic = h_discrepancy_raw if h_discrepancy_raw is not None else 0.0
-                if behaviour in ['switching_gt', 'adaptive_gt']:
-                    if hasattr(baseEnv.robot, 'visible_to_humans'):
-                        is_friendly = bool(baseEnv.robot.visible_to_humans[i])
-                    else:
-                        is_friendly = bool(baseEnv.robot.visible)
-                elif behaviour in ['switching_discrepancy', 'adaptive_discrepancy', 'switching_discrepancynew', 'adaptive_discrepancynew']:
-                    threshold = getattr(test_args, 'discrepancy_threshold', 0.05)
-                    is_friendly = h_discrepancy_for_logic > threshold
-                
+
+                # Reuse the decision the scaling loop just made for this step
+                # (only populated for in-range humans; defaults to False otherwise).
+                is_friendly = step_is_friendly_by_id.get(h.id, False)
+
+                # Ground-truth awareness from the env, for ALL humans regardless
+                # of sensor range. This is what train_alpha_predictor.py uses as
+                # the label, and the prior fallback-to-False masked far-away
+                # humans as ignorant during _gt dumps.
+                if hasattr(baseEnv.robot, 'visible_to_humans'):
+                    actual_friendly = bool(baseEnv.robot.visible_to_humans[i])
+                else:
+                    actual_friendly = bool(baseEnv.robot.visible)
+
                 human_states.append({
                     'id': int(h.id),
                     'pos': [float(h.px), float(h.py)],
                     'vel': [float(h.vx), float(h.vy)],
                     'radius': float(h.radius),
                     'discrepancy': float(h_discrepancy_raw) if h_discrepancy_raw is not None else None,
-                    'is_friendly': bool(is_friendly)
+                    'is_friendly': bool(is_friendly),
+                    'actual_friendly': actual_friendly,
                 })
                 
                 # Only include in averages if the data was actually available
@@ -436,6 +590,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                     'goal': [float(r_node[3]), float(r_node[4])],
                     'theta': float(r_node[6]),
                     'radius': float(r_node[2]),
+                    'v_pref': float(r_node[5]),
                     'lora_scale': float(baseEnv.robot.lora_scale)
                 },
                 'humans': human_states,
@@ -711,7 +866,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         print(f"==========================================================")
         print(f"Total Predictions: {total_awareness_predictions}")
         print(f"Correct Predictions: {correct_awareness_predictions}")
-        print(f"Accuracy: {accuracy:.2f}% (Threshold: {getattr(test_args, 'discrepancy_threshold', 0.05)}, M: {getattr(test_args, 'discrepancy_m', 1)})")
+        
+        # Show 0.5 threshold for network prediction, or the discrepancy threshold for other behaviors
+        active_threshold = 0.5 if '_pred' in behaviour else getattr(test_args, 'discrepancy_threshold', 0.05)
+        print(f"Accuracy: {accuracy:.2f}% (Threshold: {active_threshold}, M: {getattr(test_args, 'discrepancy_m', 1)})")
         print(f"TP: {tp}, TN: {tn}, FP: {fp}, FN: {fn}")
         print(f"==========================================================\n")
 

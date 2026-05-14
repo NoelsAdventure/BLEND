@@ -22,8 +22,16 @@ for arg in "$@"; do
 done
 
 SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aware_step25" "seperate_mixed_5050")
-BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "switching_discrepancy" "adaptive_discrepancy" "switching_discrepancynew" "adaptive_discrepancynew")
+# BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "switching_discrepancy" "adaptive_discrepancy" "switching_discrepancynew" "adaptive_discrepancynew")
 # SCENARIOS=("seperate_mixed_5050")
+# Use adaptive_gt to regenerate the *_adaptive_gt.json training files that
+# train_alpha_predictor.py reads. _gt drives LoRA from ground-truth awareness,
+# so the resulting trajectories aren't biased by a (currently wrong) predictor,
+# and the dump's `actual_friendly` label is clean for every human (in-range or
+# not). Flip to ("switching_pred" "adaptive_pred") AFTER retraining if you want
+# to re-measure the predictor's deployment behaviour.
+BEHAVIOURS=("adaptive_gt")
+# BEHAVIOURS=("switching_pred" "adaptive_pred")
 # BEHAVIOURS=("always_off" "always_on")
 
 for scenario in "${SCENARIOS[@]}"; do
