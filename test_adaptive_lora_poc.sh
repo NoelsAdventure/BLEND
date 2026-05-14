@@ -32,7 +32,7 @@ SCENARIOS=("seperate_all_ignorant" "seperate_all_aware" "seperate_ignorant_to_aw
 # to re-measure the predictor's deployment behaviour.
 BEHAVIOURS=("adaptive_gt")
 # BEHAVIOURS=("switching_pred" "adaptive_pred")
-# BEHAVIOURS=("always_off" "always_on")
+# BEHAVIOURS=("always_off")
 
 for scenario in "${SCENARIOS[@]}"; do
     echo -e "\n\n=========================================================="
