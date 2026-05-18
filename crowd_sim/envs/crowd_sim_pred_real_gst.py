@@ -102,7 +102,7 @@ class CrowdSimPredRealGST(CrowdSimPred):
             else: 
                 human.last_prediction = None
         
-        aci_predicted_conformity_scores = np.zeros(shape=(len(sorted_humans_list), human.pred_horizon_aci))
+        aci_predicted_conformity_scores = np.zeros(shape=(self.max_human_num, human.pred_horizon_aci))
         for i, human in enumerate(sorted_humans_list):
             if human.last_prediction is None:
                 human.last_aci_predicted_conformity_score = None

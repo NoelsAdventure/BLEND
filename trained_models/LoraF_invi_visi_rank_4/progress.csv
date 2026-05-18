@@ -1,0 +1,2 @@
+misc/nupdates,misc/total_timesteps,fps,sim_time,train_time,eprewmean,epcostmean,epsuccessmean,epcollisionmean,eppathlengthmean,loss/policy_entropy,loss/policy_loss,loss/value_loss,loss/cost_value_loss
+0,3840,905,3.178243398666382,1.0384180545806885,-19.931303,3.7041380000000004,0.0,1.0,8.501335105193514,1.4189385175704956,-0.003073383553419262,3.2000534866936503,0.496838417906838

@@ -94,19 +94,22 @@ class CrowdSimVarNum(CrowdSim):
         else:
             # for sim2real
             if self.robot.kinematics == 'unicycle':
-                # generate robot
-                angle = np.random.uniform(0, np.pi * 2)
-                px = self.arena_size * np.cos(angle)
-                py = self.arena_size * np.sin(angle)
+                # geometry mirrors the holonomic branch; only the initial heading is randomized
                 while True:
-                    gx, gy = np.random.uniform(-self.arena_size, self.arena_size, 2)
-                    if np.linalg.norm([px - gx, py - gy]) >= 4:  # 1 was 6
+                    px, py, gx, gy = np.random.uniform(-self.arena_size, self.arena_size, 4)
+                    if np.linalg.norm([px - gx, py - gy]) >= 8:
                         break
-                self.robot.set(px, py, gx, gy, 0, 0, np.random.uniform(0, 2 * np.pi))  # randomize init orientation
-                # 1 to 4 humans
-                self.human_num = np.random.randint(1, self.config.sim.human_num + self.human_num_range + 1)
-                # print('human_num:', self.human_num)
-                # self.human_num = 4
+                self.robot.set(px, py, gx, gy, 0, 0, np.random.uniform(0, 2 * np.pi))
+                if self.aggressiveness_factor is None:
+                    aggr_index = np.random.randint(len(self.all_possible_aggr_factor))
+                    aggr_factor = self.all_possible_aggr_factor[aggr_index]
+                    self.robot.set_aggr_factor(aggr_factor)
+                    self.robot.set_aggr_index(aggr_index)
+                else:
+                    self.robot.set_aggr_factor(self.aggressiveness_factor)
+                    self.robot.set_aggr_index(self.all_possible_aggr_factor.index(self.aggressiveness_factor))
+                self.human_num = np.random.randint(low=self.config.sim.human_num - self.human_num_range,
+                                                   high=self.config.sim.human_num + self.human_num_range + 1)
 
 
             # for sim exp
@@ -359,6 +362,11 @@ class CrowdSimVarNum(CrowdSim):
         self.step_counter = 0
         self.id_counter = 0
 
+        if hasattr(self, 'robot') and self.robot.kinematics == 'unicycle':
+            self.desiredVelocity = [0.0, 0.0]
+            self.last_left = 0.
+            self.last_right = 0.
+
 
         self.humans = []
 
@@ -503,10 +511,7 @@ class CrowdSimVarNum(CrowdSim):
             done = False
             episode_info = Nothing()
 
-        if self.robot.kinematics == 'unicycle':
-            raise NotImplementedError
-
-        cost = 0 
+        cost = 0
         cost = -cost
         return reward, done, [episode_info, cost]
 
@@ -529,7 +534,7 @@ class CrowdSimVarNum(CrowdSim):
     #         os.remove(filename)
 
     #     imageio.mimsave(generated_gif_filename, images)
-    def plot_final_frame(self, save_path, outcome, avg_lora_scale):
+    def plot_final_frame(self, save_path, outcome, avg_lora_scale, behaviour=None):
         import matplotlib.pyplot as plt
         import matplotlib.lines as mlines
         from matplotlib import patches
@@ -567,7 +572,9 @@ class CrowdSimVarNum(CrowdSim):
 
                 s = np.clip(l_scale, 0, 1)
                 segment_color = (1.0, 1.0 - s, 0.0)
-                ax.add_artist(mlines.Line2D([pos1[0], pos2[0]], [pos1[1], pos2[1]], color=segment_color, linestyle='-', alpha=0.7, linewidth=2))
+                # Thicker trail (was linewidth=2) so the robot's path stands
+                # out clearly against the human circles + goal in the final frame.
+                ax.add_artist(mlines.Line2D([pos1[0], pos2[0]], [pos1[1], pos2[1]], color=segment_color, linestyle='-', alpha=0.85, linewidth=4.0))
 
         # Plot starting position (triangular purple)
         if len(path) > 0:
@@ -575,36 +582,58 @@ class CrowdSimVarNum(CrowdSim):
             start_pos = p0[0] if isinstance(p0[0], (list, np.ndarray, tuple)) else p0
             ax.add_artist(mlines.Line2D([start_pos[0]], [start_pos[1]], color='purple', marker='^', linestyle='None', markersize=12, label='Start', alpha=0.9))
 
-        # (1) success and timeout: show goal
-        if outcome in ['Success', 'Timeout']:
-            ax.add_artist(mlines.Line2D([gx], [gy], color='purple', marker='*', linestyle='None', markersize=15, label='Goal', alpha=1.0))
-        # (2) collision: show collision place with red x
-        elif outcome == 'Collision':
+        # Always draw humans at their final positions (small filled circles).
+        # Self.humans still holds the final per-episode state at the moment
+        # animate_episode is called (rl/evaluation.py invokes it after the
+        # episode's done flag but before the next reset()).
+        try:
+            for human in self.humans:
+                h_circle = plt.Circle((human.px, human.py), human.radius,
+                                       fill=True, color='steelblue', alpha=0.6,
+                                       linewidth=0)
+                ax.add_artist(h_circle)
+        except Exception:
+            pass  # if for some reason humans aren't available, skip silently
+
+        # Always show the goal (purple star), regardless of outcome.
+        ax.add_artist(mlines.Line2D([gx], [gy], color='purple', marker='*',
+                                    linestyle='None', markersize=15,
+                                    label='Goal', alpha=1.0))
+
+        # On collision, ALSO mark where the collision happened with a red X
+        # so the failure point is visually obvious next to the trail.
+        if outcome == 'Collision':
             p_end = path[-1]
             end_pos = p_end[0] if isinstance(p_end[0], (list, np.ndarray, tuple)) else p_end
-            ax.add_artist(mlines.Line2D([end_pos[0]], [end_pos[1]], color='red', marker='x', linestyle='None', markersize=15, label='Collision', markeredgewidth=3))
+            ax.add_artist(mlines.Line2D([end_pos[0]], [end_pos[1]], color='red',
+                                        marker='x', linestyle='None', markersize=15,
+                                        label='Collision', markeredgewidth=3))
 
-        # Info text: Path Length and Avg LoRA Scale
-        info_text = f"Outcome: {outcome}\nPath Length: {path_length:.2f}m\nAvg LoRA Scale: {avg_lora_scale:.2f}"
+        # Info text: Path Length, plus Avg LoRA Scale only when the behaviour
+        # actually modulates α dynamically (i.e. an adaptive_* run). For
+        # always_off / always_on / fixed_scale / switching_* the LoRA value
+        # is either constant or binary and the "average" is uninformative
+        # clutter, so skip it.
+        is_adaptive = bool(behaviour) and 'adaptive' in str(behaviour).lower()
+        info_text = f"Outcome: {outcome}\nPath Length: {path_length:.2f}m"
+        if is_adaptive:
+            info_text += f"\nAvg LoRA Scale: {avg_lora_scale:.2f}"
         ax.text(-9.5, 9.5, info_text, fontsize=12, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-
-        # Add legend for Robot Path (Yellow-Red)
-        yellow_line = mlines.Line2D([], [], color='yellow', label='Conservative (LoRA 0)')
-        red_line = mlines.Line2D([], [], color='red', label='Aggressive (LoRA 1)')
-        ax.legend(handles=[yellow_line, red_line], loc='lower right', fontsize=8)
+        # No legend: the Conservative/Aggressive color-coding key was
+        # cluttering the final frame and is now removed entirely.
 
         plt.savefig(os.path.join(save_path, "z_final_frame.png"), bbox_inches='tight')
         plt.close()
 
 
-    def animate_episode(self, save_path, filename="default_name", outcome=None, avg_lora_scale=None):
+    def animate_episode(self, save_path, filename="default_name", outcome=None, avg_lora_scale=None, behaviour=None):
         if not os.path.exists(save_path):
             print(f"path: {save_path} is empty!!! Skip animate the pics")
             return
 
         # Generate final frame if outcome is provided
         if outcome is not None:
-            self.plot_final_frame(save_path, outcome, avg_lora_scale if avg_lora_scale is not None else 0.0)
+            self.plot_final_frame(save_path, outcome, avg_lora_scale if avg_lora_scale is not None else 0.0, behaviour=behaviour)
 
         all_pic_filenames = os.path.join(save_path, "*.png")
         generated_mp4_filename = os.path.join(save_path, f"{filename}.mp4")
@@ -733,11 +762,11 @@ class CrowdSimVarNum(CrowdSim):
             start_marker = mlines.Line2D([start_pos[0]], [start_pos[1]], color='purple', marker='^', linestyle='None', markersize=12, label='Start', alpha=0.8)
             ax.add_artist(start_marker)
             artists.append(start_marker)
-        # Display Path Length and LoRA Scale on top left
+        # Per-frame info box — Path Length only. The previous version also
+        # showed "LoRA Scale: ..." on every frame; removed entirely because
+        # it cluttered the animation and was misleading for static / switching
+        # behaviours where LoRA is constant or binary.
         info_text = f"Path Length: {self.cumulative_path_length:.2f}m"
-        if hasattr(self.robot, 'lora_scale'):
-            info_text += f"\nLoRA Scale: {self.robot.lora_scale:.2f}"
-        
         ax.text(-9.5, 9.5, info_text, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
         sensor_range = plt.Circle(self.robot.get_position(), self.robot.sensor_range + self.robot.radius + self.config.humans.radius, fill=False, color=range_color, linestyle='--')

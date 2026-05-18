@@ -8,38 +8,76 @@ import uuid
 
 from crowd_sim.envs.utils.info import *
 from alpha_predictor import FriendlyPredictor
+from train_alpha_predictor import (
+    HUMAN_FEATURE_DIM, ROBOT_FEATURE_DIM, NUM_PRED_STEPS,
+    build_human_feature_row,
+)
 
 
-def _maybe_load_friendly_predictor(behaviour, model_dir, device, logging):
-    if '_pred' not in behaviour:
-        return None
-    predictor_path = os.path.join(model_dir, 'friendly_predictor.pth')
+def _maybe_load_friendly_predictor(behaviour, model_dir, device, logging, predictor_tag=None):
+    # Resolve the predictor file path. With --predictor_tag T the loader
+    # looks for friendly_predictor_T.pth + friendly_predictor_metrics_T.json
+    # so different DAgger runs / training variants can coexist without
+    # clobbering each other. Without a tag (default) it uses the canonical
+    # friendly_predictor.pth.
+    #
+    # Tag semantics on MISSING file:
+    #   - canonical (tag=None): error iff behaviour requires the predictor
+    #     (anything with '_pred' in it), else return None (shadow eval off).
+    #   - tagged: never error. Return the sentinel string 'SKIP_TAG_MISSING'
+    #     so test.py can exit cleanly and let the shell sweep move on.
+    if predictor_tag:
+        predictor_path = os.path.join(model_dir, f'friendly_predictor_{predictor_tag}.pth')
+        metrics_path = os.path.join(model_dir, f'friendly_predictor_metrics_{predictor_tag}.json')
+    else:
+        predictor_path = os.path.join(model_dir, 'friendly_predictor.pth')
+        metrics_path = os.path.join(model_dir, 'friendly_predictor_metrics.json')
+
     if not os.path.exists(predictor_path):
-        raise FileNotFoundError(f"FriendlyPredictor weights not found at {predictor_path}")
-
-    metrics_path = os.path.join(model_dir, 'friendly_predictor_metrics.json')
+        if predictor_tag:
+            msg = (f"Tagged predictor not found: {predictor_path}. Skipping run "
+                   f"so other tags in the sweep can proceed.")
+            logging.warning(msg)
+            print(msg)
+            return 'SKIP_TAG_MISSING'
+        if '_pred' in behaviour:
+            raise FileNotFoundError(f"FriendlyPredictor weights not found at {predictor_path}")
+        logging.info(f"No FriendlyPredictor weights at {predictor_path}; "
+                     f"awareness accuracy will not be reported.")
+        return None
     m = {}
     if os.path.exists(metrics_path):
         with open(metrics_path, 'r') as mf:
             m = json.load(mf)
 
-    # Dims come from the metrics sidecar; fall back to the historical (13, 2)
-    # for checkpoints trained before the sidecar carried them.
-    human_dim = int(m.get('human_dim', 13))
-    robot_dim = int(m.get('robot_dim', 2))
+    # Dims come from the metrics sidecar; fall back to the current feature
+    # widths if the sidecar is missing.
+    human_dim = int(m.get('human_dim', HUMAN_FEATURE_DIM))
+    robot_dim = int(m.get('robot_dim', ROBOT_FEATURE_DIM))
 
-    predictor = FriendlyPredictor(human_dim=human_dim, robot_dim=robot_dim).to(device)
+    arch = m.get('architecture', {}) if isinstance(m, dict) else {}
+    predictor = FriendlyPredictor(
+        human_dim=human_dim, robot_dim=robot_dim,
+        hidden_dim=int(arch.get('hidden_dim', 128)),
+        num_heads=int(arch.get('num_heads', 4)),
+        num_layers=int(arch.get('num_layers', 2)),
+        dropout=float(arch.get('dropout', 0.1)),
+    ).to(device)
     state = torch.load(predictor_path, map_location=device)
 
     # Fail loudly on dim mismatch instead of silently mis-loading.
-    saved_human_dim = state['query_proj.weight'].shape[1]
-    saved_robot_dim = state['key_proj.weight'].shape[1]
-    if (saved_human_dim, saved_robot_dim) != (human_dim, robot_dim):
-        raise RuntimeError(
-            f"FriendlyPredictor dim mismatch: checkpoint at {predictor_path} has "
-            f"(human_dim={saved_human_dim}, robot_dim={saved_robot_dim}) but "
-            f"metrics sidecar says ({human_dim}, {robot_dim}). Re-train or fix the sidecar."
-        )
+    # Probe the first linear of human_encoder for the saved human_dim.
+    enc_w_key = 'human_encoder.0.weight'
+    rbt_w_key = 'robot_encoder.0.weight'
+    if enc_w_key in state and rbt_w_key in state:
+        saved_human_dim = state[enc_w_key].shape[1]
+        saved_robot_dim = state[rbt_w_key].shape[1]
+        if (saved_human_dim, saved_robot_dim) != (human_dim, robot_dim):
+            raise RuntimeError(
+                f"FriendlyPredictor dim mismatch: checkpoint at {predictor_path} has "
+                f"(human_dim={saved_human_dim}, robot_dim={saved_robot_dim}) but "
+                f"metrics sidecar says ({human_dim}, {robot_dim}). Re-train or fix the sidecar."
+            )
 
     predictor.load_state_dict(state)
     predictor.eval()
@@ -64,15 +102,14 @@ def _maybe_load_friendly_predictor(behaviour, model_dir, device, logging):
 
 
 def _compute_pred_friendly_probs(friendly_predictor, out_pred, aci_predicted_conformity_scores,
-                                 baseEnv, r_state_vec, device, max_humans=20, num_pred_steps=5):
+                                 baseEnv, r_state_vec, device, max_humans=20, num_pred_steps=NUM_PRED_STEPS):
     # max_humans=20 mirrors train_alpha_predictor.py FriendlyDataset.
-    # num_pred_steps=5 mirrors crowd_sim/envs/utils/human.py::pred_horizon_aci.
+    # Feature layout mirrors build_human_feature_row in train_alpha_predictor.
     if friendly_predictor is None:
         return {}
 
     # aci_predicted_conformity_scores arrives as (num_humans, T) from the env
-    # but is rewrapped to (1, num_humans, T) before this point (see ~line 239).
-    # Peel any leading env axes so we end up with a 2-D (num_humans, T) view.
+    # but is rewrapped to (1, num_humans, T) before this point.
     if aci_predicted_conformity_scores is None:
         uncs_2d = None
     else:
@@ -81,36 +118,50 @@ def _compute_pred_friendly_probs(friendly_predictor, out_pred, aci_predicted_con
             uncs = uncs[0]
         uncs_2d = uncs  # (num_humans, T)
 
-    pad_dim = friendly_predictor.query_proj.in_features
-
-    h_states_list = []
-    for i in range(max_humans):
-        if i < len(out_pred):
-            traj = out_pred[i].tolist()
-            if uncs_2d is not None and i < uncs_2d.shape[0]:
-                u_row = [float(x) for x in uncs_2d[i].tolist()]
-            else:
-                u_row = [0.0] * num_pred_steps
-            # Pad / truncate to exactly num_pred_steps so the feature width is stable.
-            if len(u_row) < num_pred_steps:
-                u_row = u_row + [0.0] * (num_pred_steps - len(u_row))
-            elif len(u_row) > num_pred_steps:
-                u_row = u_row[:num_pred_steps]
-            h_states_list.append(traj + u_row)
-        else:
-            h_states_list.append([0.0] * pad_dim)
-
-    h_states = torch.tensor([h_states_list], dtype=torch.float32).to(device)
-    r_state = torch.tensor([[float(x) for x in r_state_vec]], dtype=torch.float32).to(device)
-
-    with torch.no_grad():
-        probs = friendly_predictor(h_states, r_state).squeeze(0).cpu().numpy()
-
+    # The env's talk2Env sorts humans by distance before publishing
+    # out_pred / aci, so feature row i corresponds to the i-th
+    # distance-sorted human. Mirror that order here.
     robot_pos = baseEnv.robot.get_position()
     sorted_humans = sorted(
         baseEnv.humans,
         key=lambda h: np.linalg.norm(np.array(h.get_position()) - np.array(robot_pos)),
     )
+
+    # r_state_vec layout: [vx, vy, px, py, radius, gx, gy, v_pref, theta]
+    rvx, rvy = float(r_state_vec[0]), float(r_state_vec[1])
+    rx, ry = float(r_state_vec[2]), float(r_state_vec[3])
+
+    h_states_list = []
+    valid_mask = []
+    for i in range(max_humans):
+        if i < len(out_pred) and i < len(sorted_humans):
+            traj = out_pred[i].tolist() if hasattr(out_pred[i], 'tolist') else list(out_pred[i])
+            if uncs_2d is not None and i < uncs_2d.shape[0]:
+                u_row = [float(x) for x in uncs_2d[i].tolist()]
+            else:
+                u_row = [0.0] * num_pred_steps
+            h = sorted_humans[i]
+            h_row = build_human_feature_row(
+                traj, u_row,
+                float(h.px), float(h.py),
+                float(h.vx), float(h.vy),
+                float(getattr(h, 'radius', 0.3)),
+                rx, ry, rvx, rvy,
+            )
+            h_states_list.append(h_row)
+            valid_mask.append(True)
+        else:
+            h_states_list.append([0.0] * HUMAN_FEATURE_DIM)
+            valid_mask.append(False)
+
+    h_states = torch.tensor([h_states_list], dtype=torch.float32).to(device)
+    r_state = torch.tensor([[float(x) for x in r_state_vec]], dtype=torch.float32).to(device)
+    key_padding_mask = torch.tensor([[not v for v in valid_mask]], dtype=torch.bool).to(device)
+
+    with torch.no_grad():
+        logits = friendly_predictor(h_states, r_state, key_padding_mask=key_padding_mask)
+        probs = torch.sigmoid(logits).squeeze(0).cpu().numpy()
+
     result = {}
     for i, h in enumerate(sorted_humans):
         if i < max_humans:
@@ -154,6 +205,52 @@ def _has_lora_modules(actor_critic):
     return any(isinstance(m, (LoRALinear, LoRAAdapter)) for m in actor_critic.modules())
 
 
+def _apply_cluster_layout(baseEnv, cluster_spread=1.5, goal_jitter=1.0):
+    """Override per-episode human positions/goals so that humans form two
+    diametrically opposite spatial clusters that walk toward each other.
+    Cluster 0 (first half by index) is ignorant; cluster 1 (second half) is
+    aware. Called after envs.reset(); the first observation will still
+    reflect pre-reposition state, but every subsequent step is correct.
+    """
+    n = len(baseEnv.humans)
+    if n == 0:
+        baseEnv.robot.visible_to_humans = []
+        return
+    half = n // 2
+
+    circle_r = baseEnv.circle_radius
+    theta_a = np.random.uniform(0, 2 * np.pi)
+    center_a = np.array([circle_r * np.cos(theta_a), circle_r * np.sin(theta_a)])
+    center_b = -center_a
+
+    robot_pos = np.array(baseEnv.robot.get_position())
+    robot_clearance = baseEnv.robot.radius + 0.5
+
+    visible_flags = []
+    for i, human in enumerate(baseEnv.humans):
+        is_aware = i >= half
+        spawn_center = center_b if is_aware else center_a
+        goal_center = center_a if is_aware else center_b
+
+        px, py = spawn_center
+        for _ in range(50):
+            offset = np.random.uniform(-cluster_spread, cluster_spread, 2)
+            px, py = spawn_center + offset
+            if np.linalg.norm([px - robot_pos[0], py - robot_pos[1]]) > human.radius + robot_clearance:
+                break
+        gx, gy = goal_center + np.random.uniform(-goal_jitter, goal_jitter, 2)
+
+        human.px = float(px)
+        human.py = float(py)
+        human.gx = float(gx)
+        human.gy = float(gy)
+        human.vx = 0.0
+        human.vy = 0.0
+        visible_flags.append(is_aware)
+
+    baseEnv.robot.visible_to_humans = visible_flags
+
+
 def _apply_lora_scale(actor_critic, baseEnv, scale):
     """Single source of truth for keeping env-side state and every LoRA
     module's dynamic_scale in lock-step. Use this everywhere LoRA scale is
@@ -185,7 +282,32 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     all_discrepancy_data = {'aware': [], 'ignorant': []}
 
     behaviour = getattr(test_args, 'lora_behaviour', 'none')
-    friendly_predictor = _maybe_load_friendly_predictor(behaviour, model_dir, device, logging)
+    predictor_tag = getattr(test_args, 'predictor_tag', None) or None
+    friendly_predictor = _maybe_load_friendly_predictor(behaviour, model_dir, device, logging,
+                                                       predictor_tag=predictor_tag)
+    if friendly_predictor == 'SKIP_TAG_MISSING':
+        # Tagged predictor doesn't exist — gracefully exit so the calling
+        # shell sweep can move on to the next combo without failing.
+        msg = (f"Skipping evaluation: predictor_tag='{predictor_tag}' has no "
+               f"matching file in {model_dir}.")
+        logging.warning(msg)
+        print(msg)
+        return
+    # When no tag is set, also accept the legacy None (predictor absent for
+    # non-_pred behaviours) — fall through to the existing shadow-eval gating.
+
+    # Awareness shadow-eval gating. 'always' (default) scores the predictor
+    # against ground truth every step regardless of behaviour. 'pred_only'
+    # restricts scoring to *_pred behaviours where the predictor is already
+    # driving LoRA, so adaptive_gt / always_* runs don't pay the forward pass
+    # or report stats. 'off' disables shadow eval entirely.
+    awareness_eval = getattr(test_args, 'awareness_eval', 'always')
+    if awareness_eval == 'off':
+        eval_predictor_this_run = False
+    elif awareness_eval == 'pred_only':
+        eval_predictor_this_run = '_pred' in behaviour
+    else:  # 'always'
+        eval_predictor_this_run = True
 
     if config.robot.policy not in ['orca', 'social_force']:
         eval_recurrent_hidden_states = {}
@@ -351,6 +473,20 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             if behaviour in _ADAPTIVE_BEHAVIOURS:
                 _apply_lora_scale(actor_critic, baseEnv, 1.0)
 
+        elif scenario == 'cluster_aware_ignorant':
+            _apply_cluster_layout(baseEnv)
+            if k == 0:
+                msg = (f"Cluster scenario: {sum(not v for v in baseEnv.robot.visible_to_humans)} ignorant "
+                       f"(cluster A), {sum(baseEnv.robot.visible_to_humans)} aware (cluster B)")
+                if hasattr(pbar, 'write'):
+                    pbar.write(msg)
+                else:
+                    print(msg)
+            if behaviour in _ADAPTIVE_BEHAVIOURS:
+                _apply_lora_scale(actor_critic, baseEnv, 1.0)
+            else:
+                baseEnv.robot.lora_enabled = _has_lora_modules(actor_critic)
+
         # Initialize prev_predictions before the loop for tracking discrepancy
         prev_predictions = {}
         human_above_threshold_count = {} # Track consecutive frames above threshold
@@ -443,24 +579,64 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # Cache of per-step is_friendly decisions, reused by the JSON logger below
             step_is_friendly_by_id = {}
 
+            # Match the RL policy's robot input: concat([temporal_edges,
+            # robot_node]) = [vx, vy, px, py, radius, gx, gy, v_pref, theta]
+            # (see rl/networks/networkss.py:197). Hoisted out of the
+            # behaviour-specific branch below so the shadow predictor eval
+            # can run regardless of which behaviour drives the policy.
+            r_state_vec = [
+                float(r_vel[0]), float(r_vel[1]),
+                float(r_node[0]), float(r_node[1]), float(r_node[2]),
+                float(r_node[3]), float(r_node[4]), float(r_node[5]),
+                float(r_node[6]),
+            ]
+            # Shadow predictor eval: when the predictor weights live in the
+            # model dir, run them every step (whatever the behaviour) and
+            # score against ground-truth visibility for every in-range
+            # human. This populates the AwAcc / AwF1 / TP-FP-TN-FN stats
+            # shown in the progress bar, so `adaptive_gt` etc. report the
+            # predictor quality too without affecting the policy.
+            pred_friendly_probs = _compute_pred_friendly_probs(
+                friendly_predictor, out_pred, aci_predicted_conformity_scores,
+                baseEnv, r_state_vec, device,
+            )
+            if friendly_predictor is not None and eval_predictor_this_run:
+                _robot_pos_shadow = baseEnv.robot.get_position()
+                for _i, _human in enumerate(baseEnv.humans):
+                    _dist = np.linalg.norm(
+                        np.array(_human.get_position()) - np.array(_robot_pos_shadow)
+                    )
+                    if _dist > baseEnv.robot.sensor_range:
+                        continue
+                    # The predictor only scored the top-max_humans closest
+                    # (see _compute_pred_friendly_probs). Humans beyond that
+                    # cap have no real prediction; counting them as "0.0 ⇒
+                    # predicted ignorant" silently inflates FN/TN. Skip them
+                    # so AwAcc reflects only what the predictor actually said.
+                    if _human.id not in pred_friendly_probs:
+                        continue
+                    if hasattr(baseEnv.robot, 'visible_to_humans'):
+                        _actual = bool(baseEnv.robot.visible_to_humans[_i])
+                    else:
+                        _actual = bool(baseEnv.robot.visible)
+                    _prob = pred_friendly_probs[_human.id]
+                    _pred = _prob > 0.5
+                    total_awareness_predictions += 1
+                    if _pred == _actual:
+                        correct_awareness_predictions += 1
+                    if _pred and _actual:
+                        tp += 1
+                    elif _pred and not _actual:
+                        fp += 1
+                    elif not _pred and _actual:
+                        fn += 1
+                    else:
+                        tn += 1
+
             # Continuous adaptive scale or majority-based switching
             if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
                 robot_pos = baseEnv.robot.get_position()
                 robot_theta = obs['robot_node'][0, 0, 6].item() # robot heading
-
-                # Match the RL policy's robot input: concat([temporal_edges,
-                # robot_node]) = [vx, vy, px, py, radius, gx, gy, v_pref, theta]
-                # (see rl/networks/networkss.py:197).
-                r_state_vec = [
-                    float(r_vel[0]), float(r_vel[1]),
-                    float(r_node[0]), float(r_node[1]), float(r_node[2]),
-                    float(r_node[3]), float(r_node[4]), float(r_node[5]),
-                    float(r_node[6]),
-                ]
-                pred_friendly_probs = _compute_pred_friendly_probs(
-                    friendly_predictor, out_pred, aci_predicted_conformity_scores,
-                    baseEnv, r_state_vec, device,
-                )
 
                 total_weight = 0.0
                 friendly_weight = 0.0
@@ -478,19 +654,6 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                             human_above_threshold_count, test_args,
                         )
                         step_is_friendly_by_id[human.id] = bool(is_friendly)
-
-                        if '_pred' in behaviour or '_discrepancy' in behaviour:
-                            total_awareness_predictions += 1
-                            if is_friendly == actual_friendly:
-                                correct_awareness_predictions += 1
-                            if is_friendly and actual_friendly:
-                                tp += 1
-                            elif is_friendly and not actual_friendly:
-                                fp += 1
-                            elif not is_friendly and actual_friendly:
-                                fn += 1
-                            else:
-                                tn += 1
 
                         if is_friendly:
                             friendly_in_range += 1
@@ -719,25 +882,51 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         if hasattr(pbar, 'set_postfix'):
             avg_lora_so_far = np.mean([ep['avg_lora_scale'] for ep in episodes_data])
             avg_pl_so_far = np.mean(all_path_len)
-            pbar.set_postfix({
+            postfix = {
                 'SR': f'{success/(k+1):.2f}',
                 'CR': f'{collision/(k+1):.2f}',
                 'Avg PL': f'{avg_pl_so_far:.2f}',
-                'Avg LoRA': f'{avg_lora_so_far:.2f}'
-            })
+                'Avg LoRA': f'{avg_lora_so_far:.2f}',
+            }
+            # Running awareness accuracy / F1, only populated when behaviour
+            # generates per-human predictions (*_pred or *_discrepancy*).
+            total_preds = tp + fp + tn + fn
+            if total_preds > 0:
+                acc_so_far = (tp + tn) / total_preds
+                prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+                postfix['AwAcc'] = f'{acc_so_far:.2f}'
+                postfix['AwF1'] = f'{f1:.2f}'
+            pbar.set_postfix(postfix)
 
         if not visualize and (k + 1) % 50 == 0:
             avg_sr = success / (k + 1)
             avg_cr = collision / (k + 1)
             avg_lora = np.mean([ep['avg_lora_scale'] for ep in episodes_data])
             summary_str = f"[Step {k+1}] SR: {avg_sr:.3f}, CR: {avg_cr:.3f}, Avg LoRA: {avg_lora:.3f}"
+            total_preds = tp + fp + tn + fn
+            if total_preds > 0:
+                aw_acc = (tp + tn) / total_preds
+                prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                aw_f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+                summary_str += (
+                    f", AwAcc: {aw_acc:.3f}, AwF1: {aw_f1:.3f}, "
+                    f"TP: {100*tp/total_preds:.1f}%, "
+                    f"FP: {100*fp/total_preds:.1f}%, "
+                    f"TN: {100*tn/total_preds:.1f}%, "
+                    f"FN: {100*fn/total_preds:.1f}% (N={total_preds})"
+                )
             if hasattr(pbar, 'write'):
                 pbar.write(summary_str)
             else:
                 print(f"\n{summary_str}")
 
         if video_save_path:
-            baseEnv.animate_episode(video_save_path, f"{exp_id}_ep{k}_{episode_result}", outcome=episode_result, avg_lora_scale=avg_lora_scale)
+            baseEnv.animate_episode(video_save_path, f"{exp_id}_ep{k}_{episode_result}",
+                                    outcome=episode_result, avg_lora_scale=avg_lora_scale,
+                                    behaviour=behaviour)
 
     if not visualize:
         print() # Move to next line after progress bar
@@ -802,6 +991,21 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             'timeout_rate': timeout_rate,
             'avg_nav_time': avg_nav_time,
             'avg_path_length': float(np.mean(all_path_len)),
+            # std fields needed for downstream ±CI computation (Wilson for SR,
+            # mean±SE for PL/NavTime). Cheap one-pass numpy calls on
+            # already-collected per-episode lists.
+            'std_path_length': float(np.std(all_path_len, ddof=1)) if len(all_path_len) > 1 else 0.0,
+            'std_nav_time': float(np.std(success_times, ddof=1)) if len(success_times) > 1 else 0.0,
+            'std_uncertainty': float(np.std(all_avg_uncertainty, ddof=1)) if len(all_avg_uncertainty) > 1 else 0.0,
+            # Intrusion rate (ITR, % of steps where robot was inside the
+            # discomfort distance) — one value per episode in too_close_ratios.
+            'avg_intrusion_ratio_pct': float(np.mean(too_close_ratios)) if too_close_ratios else 0.0,
+            'std_intrusion_ratio_pct': float(np.std(too_close_ratios, ddof=1)) if len(too_close_ratios) > 1 else 0.0,
+            # Social distance (SD, min robot-human distance during intrusions) —
+            # one value per intrusion step in min_dist; NaN if no intrusions.
+            'avg_min_social_distance': float(np.mean(min_dist)) if min_dist else float('nan'),
+            'std_min_social_distance': float(np.std(min_dist, ddof=1)) if len(min_dist) > 1 else 0.0,
+            'n_intrusion_episodes': int(len(min_dist)),
             'avg_uncertainty': float(np.mean(all_avg_uncertainty)),
             'avg_lora_scale': float(np.mean([ep['avg_lora_scale'] for ep in episodes_data])),
             'avg_discrepancy_aware': float(avg_discrepancy_aware),
@@ -816,11 +1020,40 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         'episodes': episodes_data
     }
     
-    # 1. Save FULL data for THIS experiment
+    # 1. Save FULL per-episode dump.
+    #    Default whitelist = behaviours whose JSONs are consumed by the
+    #    training pipeline (train_alpha_from_json / dagger_loop):
+    #       adaptive_gt    — supervised anchor data
+    #       adaptive_pred  — DAgger closed-loop rollouts
+    #       switching_pred — DAgger closed-loop rollouts (binary variant)
+    #    Every other behaviour (always_off / always_on / *_discrepancy / etc.)
+    #    skips this 100s-of-MB write — the summary block still goes into
+    #    all_evaluations.json + the CSV below.
+    #
+    #    Override via test.py --save_episode_dump {auto|always|never}:
+    #       auto    — whitelist above (default)
+    #       always  — dump regardless of behaviour
+    #       never   — skip regardless of behaviour
     individual_json_path = os.path.join(model_dir, 'test', f'{exp_id}.json')
-    with open(individual_json_path, 'w') as f:
-        json.dump(full_experiment_data, f, indent=4)
-    logging.info(f"Full experiment data saved to {individual_json_path}")
+    full_dump_behaviours = {'adaptive_gt', 'adaptive_pred', 'switching_pred'}
+    save_mode = getattr(test_args, 'save_episode_dump', 'auto') or 'auto'
+    if save_mode == 'always':
+        should_dump = True
+    elif save_mode == 'never':
+        should_dump = False
+    else:  # 'auto'
+        should_dump = behaviour in full_dump_behaviours
+
+    if should_dump:
+        with open(individual_json_path, 'w') as f:
+            json.dump(full_experiment_data, f, indent=4)
+        logging.info(f"Full experiment data saved to {individual_json_path}")
+    else:
+        logging.info(
+            f"Skipped per-episode dump for behaviour='{behaviour}' "
+            f"(save_episode_dump={save_mode}). Summary still recorded in "
+            f"all_evaluations.json + evaluation_data_scale_*.csv."
+        )
 
     # 2. Update/Create summary index of ALL experiments
     summary_json_path = os.path.join(model_dir, 'test', 'all_evaluations.json')

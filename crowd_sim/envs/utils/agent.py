@@ -184,7 +184,13 @@ class Agent(object):
 
     def one_step_lookahead(self, pos, action):
         px, py = pos
-        self.check_validity(action)
+        # check_validity() was here but it asserts ActionRot for unicycle
+        # robots; this method is a holonomic-style approximation that always
+        # uses (vx, vy), and the only callers in crowd_sim_var_num.py wrap
+        # values into ActionXY before calling. So the assertion fired
+        # spuriously for any unicycle-trained model (e.g. Fulltune_uni_invi).
+        # Trust the duck typing: the next line will AttributeError if action
+        # lacks vx, which is the same level of safety.
         new_px = px + action.vx * self.time_step
         new_py = py + action.vy * self.time_step
         new_vx = action.vx

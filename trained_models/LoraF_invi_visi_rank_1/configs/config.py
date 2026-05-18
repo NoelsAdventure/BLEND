@@ -15,18 +15,20 @@ class Config(object):
     network_related = BaseConfig()
     dataset = BaseConfig()
     policy = BaseConfig()
+    robot = BaseConfig()
+    lora = BaseConfig()
     #################### frequently tuned parameters ######################## 
     aci_related.considered_steps = 2
     aci_related.prediction_extra_buffer_size = 0.0
     aci_related.current_position_buffer = 0.25
     aci_related.alpha = 0.1
 
-    aci_related.noise_clip_for_conformity_scores = 0
-    aci_related.noise_std_for_conformity_scores = 0
+    aci_related.noise_clip_for_conformity_scores = 0#0.1
+    aci_related.noise_std_for_conformity_scores = 0#0.1
     
     aci_related.noise_std_for_cost = 0.0
     aci_related.noise_clip_for_cost = 0.00
-    aci_related.only_circular = False
+    aci_related.only_circular = False #always false
     aci_related.only_prediction_line = False
     constrained_rl_related.cost_limit = 0.4
     constrained_rl_related.lag_init = 0.10
@@ -34,22 +36,30 @@ class Config(object):
     
     policy.aci_input = True
     policy.constant_std = True
-    
     policy.constrain_cost = True
     
     env.val_size = 100
     env.test_size = 500
-    note = f"gen_safe_nav"
+    # note = f"LoraF_invi_visi" Fulltune_uni_invi_visi
+    note = f"LoraF_invi_visi"
+    # whether robot is visible to humans (whether humans respond to the robot's motion)
+    robot.visible = True # tag: 05/02/2024
+    # LoRA config
+    lora.rank = 1
+    lora.alpha = 128
+    lora.use_lora = True
+    # action space of the robot
+    action_space = BaseConfig()
+    # holonomic or unicycle
+    action_space.kinematics = "holonomic"
     #################### unfrequently tuned ######################## 
-    aggressiveness_factor = 0.0 # unused
+    aggressiveness_factor = 0.0 # unused for now
     reward.intrusion_start_dist = 0.50 # unused
 
 
     env.randomize_attributes = True
-    env.time_limit = 50
-    env.time_step = 0.25    
-    # record robot states and actions an episode
-    #       for system identification in sim2real
+    env.time_limit = 50 
+    env.time_step = 0.25 
     env.record = False
     env.load_act = False
 
@@ -76,12 +86,12 @@ class Config(object):
     sim.human_num = 20
     # actual human num in each timestep, in [human_num-human_num_range, human_num+human_num_range]
     sim.human_num_range = 0
-    sim.predict_steps = 5  # yjp mark: prediction horizon (steps)
+    sim.predict_steps = 5  
     # 'const_vel': constant velocity model,
     # 'truth': ground truth future traj (with info in robot's fov)
     # 'inferred': inferred future traj from GST network
     # 'none': no prediction
-    sim.predict_method = 'inferred'
+    sim.predict_method = 'inferred'#'truth'#'const_vel'
     # render the simulation during training or not
     sim.render = False
 
@@ -95,7 +105,7 @@ class Config(object):
     if sim.predict_method == 'inferred':
         env.use_wrapper = True
     else:
-        env.use_wrapper = False
+        env.use_wrapper = False # we made modifications to the original logic, if use_wrapper = False, we will use VecPretextNormalizeDummy
 
     # human config
     humans = BaseConfig()
@@ -110,7 +120,7 @@ class Config(object):
 
     # a human may change its goal before it reaches its old goal
     # if randomize human behaviors, set to True, else set to False
-    humans.random_goal_changing = True
+    humans.random_goal_changing = False
     humans.goal_change_chance = 0.5
 
     # a human may change its goal after it reaches its old goal
@@ -128,22 +138,16 @@ class Config(object):
     humans.random_policy_changing = False
 
     # robot config
-    robot = BaseConfig()
-    # whether robot is visible to humans (whether humans respond to the robot's motion)
-    robot.visible = True 
-    robot.policy = 'selfAttn_merge_srnn'
+    # For baseline: srnn; our method: selfAttn_merge_srnn
+    robot.policy = 'selfAttn_merge_srnn' #'networks', 'selfAttn_merge_srnn'
     robot.radius = 0.3
     robot.v_pref = 1
     robot.sensor = "coordinates"
-    # FOV = this values * PIa
+    # FOV = this values * PI
     robot.FOV = 2
     # radius of perception range
     robot.sensor_range = 5
 
-    # action space of the robot
-    action_space = BaseConfig()
-    # holonomic or unicycle
-    action_space.kinematics = "holonomic"
 
     # config for ORCA
     orca = BaseConfig()
@@ -173,7 +177,7 @@ class Config(object):
     # see 'gst_updated/results/README.md' for how to set this variable
     # If randomized humans: gst_updated/results/100-gumbel_social_transformer-faster_lstm-lr_0.001-init_temp_0.5-edge_head_0-ebd_64-snl_1-snh_8-seed_1000_rand/sj
     # else: gst_updated/results/100-gumbel_social_transformer-faster_lstm-lr_0.001-init_temp_0.5-edge_head_0-ebd_64-snl_1-snh_8-seed_1000/sj
-    pred.model_dir = 'gst_updated/results/100-gumbel_social_transformer-faster_lstm-lr_0.001-init_temp_0.5-edge_head_0-ebd_64-snl_1-snh_8-seed_1000_rand/sj'
+    pred.model_dir = "gst_updated/results/100-gumbel_social_transformer-faster_lstm-lr_0.001-init_temp_0.5-edge_head_0-ebd_64-snl_1-snh_8-seed_1000_rand/sj"
 
     # LIDAR config
     lidar = BaseConfig()
@@ -191,6 +195,7 @@ class Config(object):
     sim2real.ROSStepInterval = 0.03
     sim2real.fixed_time_interval = 0.1
     sim2real.use_fixed_time_interval = True
+
 
     if sim.predict_method == 'inferred' and env.use_wrapper == False:
         raise ValueError("If using inferred prediction, you must wrap the envs!")

@@ -51,8 +51,29 @@ def main():
     parser.add_argument('--robot_visible', type=str, default=None, help='Override robot visibility: True or False')
     parser.add_argument('--human_num', type=int, default=None, help='Override number of humans')
     parser.add_argument('--test_size', type=int, default=250, help='Number of episodes to test')
-    parser.add_argument('--adaptive_lora_scenario', type=str, choices=['seperate_ignorant_to_aware_step25', 'seperate_mixed_5050', 'seperate_all_ignorant', 'seperate_all_aware', 'none'], default='none',
-                        help='Proof of concept scenarios: seperate_ignorant_to_aware_step25 (switch at step 25), seperate_mixed_5050 (mixed), seperate_all_ignorant, or seperate_all_aware')
+    parser.add_argument('--adaptive_lora_scenario', type=str, choices=['seperate_ignorant_to_aware_step25', 'seperate_mixed_5050', 'seperate_all_ignorant', 'seperate_all_aware', 'cluster_aware_ignorant', 'none'], default='none',
+                        help='Proof of concept scenarios: seperate_ignorant_to_aware_step25 (switch at step 25), seperate_mixed_5050 (mixed), seperate_all_ignorant, seperate_all_aware, or cluster_aware_ignorant (two spatial clusters: one aware, one ignorant)')
+    parser.add_argument('--awareness_eval', type=str,
+                        choices=['always', 'pred_only', 'off'], default='always',
+                        help='Whether to score the awareness predictor in shadow mode against ground truth. '
+                             '"always" (default) runs the predictor every step regardless of behaviour and reports AwAcc/AwF1 in the progress bar. '
+                             '"pred_only" runs the shadow eval only when behaviour is switching_pred/adaptive_pred (where the predictor is already in the loop). '
+                             '"off" disables the shadow eval entirely.')
+    parser.add_argument('--predictor_tag', type=str, default=None,
+                        help='Optional suffix selecting a non-canonical predictor checkpoint. '
+                             'With --predictor_tag h30_adaptive, loads friendly_predictor_h30_adaptive.pth '
+                             'and the matching metrics sidecar from the model_dir. If the tagged file is '
+                             'absent, the run is skipped cleanly (used by sweeps that iterate tags). '
+                             'Omit to use the canonical friendly_predictor.pth.')
+    parser.add_argument('--save_episode_dump', type=str, default='auto',
+                        choices=['auto', 'always', 'never'],
+                        help='Whether to save the per-episode JSON dump (100s of MB per run). '
+                             '"auto" (default) saves only for adaptive_gt / adaptive_pred / switching_pred '
+                             '(the behaviours whose dumps are consumed by training / DAgger). '
+                             '"always" saves regardless of behaviour (useful when you need the full '
+                             'trajectory for visualization). "never" skips entirely. '
+                             'The summary block always lands in all_evaluations.json + the CSV — '
+                             'this flag only affects the heavy per-episode file.')
     
     # Use parse_known_args so test.py only takes what it needs
     test_args, unknown = parser.parse_known_args()

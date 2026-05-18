@@ -59,9 +59,16 @@ def plot_results(model_dir, output_dir=None, min_episodes=100, selected_scales=N
         print("No valid results found in CSV files.")
         return
 
-    # Prepare data for plotting (sorted by scale)
+    # Prepare data for plotting (sorted by scale).
+    # Clamp to [0, 1]: scales outside that range are sweep stress-tests, not
+    # the useful operating range — exclude them so the plot focuses on the
+    # behaviourally meaningful interval.
     df_results = pd.DataFrame(results).sort_values(by='lora_scale')
-    
+    df_results = df_results[(df_results['lora_scale'] >= 0.0) & (df_results['lora_scale'] <= 1.0)]
+    if df_results.empty:
+        print("No scales in [0, 1] after clamping; nothing to plot.")
+        return
+
     scales = df_results['lora_scale'].tolist()
     sr = df_results['success_rate'].tolist()
     pl = df_results['avg_path_length'].tolist()
@@ -79,6 +86,7 @@ def plot_results(model_dir, output_dir=None, min_episodes=100, selected_scales=N
     ax1.tick_params(axis='y', labelcolor=color)
     ax1.grid(True, linestyle='--', alpha=0.7)
     ax1.set_ylim(-0.05, 1.05)
+    ax1.set_xlim(0.0, 1.0)
 
     ax2 = ax1.twinx()  
     color = 'tab:red'
@@ -101,7 +109,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_dir', type=str, default="trained_models/LoraE_invi_visi_alpha_128")
     parser.add_argument('--output_dir', type=str, default=None, help="Directory to save the plot. Defaults to model_dir/test")
-    parser.add_argument('--min_episodes', type=int, default=100)
+    parser.add_argument('--min_episodes', type=int, default=400,
+                        help='Skip scale CSVs with fewer than this many episodes. '
+                             'Default 400 filters out partial-overwrite files '
+                             '(e.g. a 200-ep scale=1.0 dropped among 500-ep neighbours).')
     parser.add_argument('--scales', type=str, default=None, help="Comma-separated list of scales to include (e.g. 0.0,0.5,1.0)")
     args = parser.parse_args()
     
