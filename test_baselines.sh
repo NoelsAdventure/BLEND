@@ -51,8 +51,8 @@ SCRIPT_PASSTHRU_ARGS=("${_remaining_args[@]}")
 # Each entry: "NAME|MODEL_DIR|CHECKPOINT". Pipe-separated so the names can
 # contain spaces; only the array splitting is whitespace-sensitive.
 BASELINES=(
-    "SF|trained_models/SF|05207.pt"
-    "ORCA|trained_models/ORCA|05207.pt"
+    # "SF|trained_models/SF|05207.pt"
+    # "ORCA|trained_models/ORCA|05207.pt"
     "CrowdNav++|trained_models/GST_predictor_rand|05207.pt"
     "GenSafeNav-naive|trained_models/Fulltune_random_visi_seed_42|01200.pt"
 )
