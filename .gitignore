@@ -4,7 +4,6 @@ visualizations/
 visualize.py
 visualize_weights.py
 wandb/
-trained_models/
 *.png
 *.jpg
 *.jpeg
@@ -17,3 +16,46 @@ trained_models/
 gst_updated/results/
 __pycache__/
 *.pyc
+
+# ─── trained_models: ignore everything by default, then surgically re-include
+#     the LoraF model files needed to run test_lora_ablation.sh on another PC.
+#
+# The trailing-slash form `trained_models/` would prune the tree entirely and
+# prevent any `!` rules from re-including children. The star form
+# `trained_models/*` lets git descend into the dir to evaluate sub-patterns.
+
+trained_models/*
+
+# --- LoraF rank=1 (main / canonical LoraF) ----------------------------------
+!trained_models/LoraF_invi_visi_rank_1/
+trained_models/LoraF_invi_visi_rank_1/*
+!trained_models/LoraF_invi_visi_rank_1/arguments.py
+!trained_models/LoraF_invi_visi_rank_1/note.txt
+!trained_models/LoraF_invi_visi_rank_1/progress.csv
+!trained_models/LoraF_invi_visi_rank_1/friendly_predictor.pth
+!trained_models/LoraF_invi_visi_rank_1/friendly_predictor_metrics.json
+
+!trained_models/LoraF_invi_visi_rank_1/configs/
+trained_models/LoraF_invi_visi_rank_1/configs/*
+!trained_models/LoraF_invi_visi_rank_1/configs/__init__.py
+!trained_models/LoraF_invi_visi_rank_1/configs/config.py
+
+!trained_models/LoraF_invi_visi_rank_1/checkpoints/
+trained_models/LoraF_invi_visi_rank_1/checkpoints/*
+!trained_models/LoraF_invi_visi_rank_1/checkpoints/03400.pt
+
+# --- LoraF rank=4 (ablation comparator) -------------------------------------
+!trained_models/LoraF_invi_visi_rank_4/
+trained_models/LoraF_invi_visi_rank_4/*
+!trained_models/LoraF_invi_visi_rank_4/arguments.py
+!trained_models/LoraF_invi_visi_rank_4/note.txt
+!trained_models/LoraF_invi_visi_rank_4/progress.csv
+
+!trained_models/LoraF_invi_visi_rank_4/configs/
+trained_models/LoraF_invi_visi_rank_4/configs/*
+!trained_models/LoraF_invi_visi_rank_4/configs/__init__.py
+!trained_models/LoraF_invi_visi_rank_4/configs/config.py
+
+!trained_models/LoraF_invi_visi_rank_4/checkpoints/
+trained_models/LoraF_invi_visi_rank_4/checkpoints/*
+!trained_models/LoraF_invi_visi_rank_4/checkpoints/03400.pt

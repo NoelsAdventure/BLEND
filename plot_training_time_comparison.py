@@ -10,10 +10,15 @@ plt.switch_backend('Agg')
 plt.rcParams.update({'font.size': 14})
 
 # Configuration: Define the models and their directory paths
+# MODELS = {
+#     'Fulltune 1': 'trained_models/Fulltune_uni_invi',
+#     'Fulltune 2': 'trained_models/Fulltune_uni_invi'
+# }
+# # Configuration: Define the models and their directory paths
 MODELS = {
-    'LoRA Frank 1': 'trained_models/LoraF_invi_visi_rank_1',
-    'LoRA Frank 4': 'trained_models/LoraF_invi_visi_rank_4',
-    'Fulltune 2': 'trained_models/Fulltune2_invi_visi'
+    'LoRA rank 1': 'trained_models/LoraF_invi_visi_rank_1',
+    'LoRA rank 4': 'trained_models/LoraF_invi_visi_rank_4',
+    'Fulltune': 'trained_models/Fulltune2_invi_visi'
 }
 
 def plot_comparison():
@@ -27,7 +32,7 @@ def plot_comparison():
     ax2_twin = ax2.twinx()
     
     # Use different colors for different models
-    colors = {'LoRA Frank 1': 'blue', 'LoRA Frank 4': 'green', 'Fulltune 2': 'red'}
+    colors = {'LoRA rank 1': 'blue', 'LoRA rank 4': 'green', 'Fulltune': 'red'}
     
     x_label = 'Cumulative Training Time (seconds)' # Default fallback
     

@@ -37,16 +37,26 @@ def main():
     parser.add_argument('--render_traj', default=False, action='store_true')
     parser.add_argument('--save_slides', default=False, action='store_true')
     
-    # Arguments added for Adaptive LoRA PoC
+    # Arguments added for Adaptive LoRA PoC. Keep this set in sync with
+    # test.py — they share the same Adaptive-LoRA CLI surface so the same
+    # shell scripts (test_adaptive_lora_poc.sh) can drive either entry point.
     parser.add_argument('--lora_scale', type=float, default=1.0)
-    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'switching_gt', 'switching_discrepancy', 'adaptive_gt', 'adaptive_discrepancy', 'none'], default='adaptive_discrepancy')
+    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred', 'none'], default='adaptive_discrepancy')
     parser.add_argument('--discrepancy_threshold', type=float, default=0.05, help='Threshold for classifying a human as aware/friendly based on discrepancy score')
+    parser.add_argument("--discrepancy_m", type=int, default=1, help="Number of consecutive times the score must be above threshold to classify as aware")
+    parser.add_argument('--exp_id', type=str, default=None)
     parser.add_argument('--robot_visible', type=str, default=None, help='Override robot visibility: True or False')
     parser.add_argument('--human_num', type=int, default=None, help='Override number of humans')
     parser.add_argument('--test_size', type=int, default=1, help='Number of episodes to test')
-    parser.add_argument('--adaptive_lora_scenario', type=str, choices=['seperate_ignorant_to_aware_step25', 'seperate_mixed_5050', 'seperate_all_ignorant', 'seperate_all_aware', 'none'], default='none')
-    
-    parser.add_argument("--discrepancy_m", type=int, default=1, help="Number of consecutive times the score must be above threshold to classify as aware")
+    parser.add_argument('--adaptive_lora_scenario', type=str, choices=['seperate_ignorant_to_aware_step25', 'seperate_mixed_5050', 'seperate_all_ignorant', 'seperate_all_aware', 'cluster_aware_ignorant', 'none'], default='none')
+    parser.add_argument('--awareness_eval', type=str,
+                        choices=['always', 'pred_only', 'off'], default='always',
+                        help='Same flag as test.py — see test.py --help for details.')
+    parser.add_argument('--predictor_tag', type=str, default=None,
+                        help='Same flag as test.py — see test.py --help for details.')
+    parser.add_argument('--save_episode_dump', type=str, default='auto',
+                        choices=['auto', 'always', 'never'],
+                        help='Same flag as test.py — see test.py --help for details.')
     # Use parse_known_args to ignore arguments meant for the environment
     test_args, unknown = parser.parse_known_args()
     

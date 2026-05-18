@@ -318,28 +318,11 @@ class CrowdSim(gym.Env):
         right = np.clip(right, -17.5, 17.5)
 
         # print('Before: left:', left, 'right:', right)
-        if self.phase == 'test':
-            left = (1. - beta) * self.last_left + beta * left
-            right = (1. - beta) * self.last_right + beta * right
+        left = (1. - beta) * self.last_left + beta * left
+        right = (1. - beta) * self.last_right + beta * right
 
         self.last_left = copy.deepcopy(left)
         self.last_right = copy.deepcopy(right)
-
-        # subtract a noisy amount of delay from wheel speeds to simulate the delay in tb2
-        # do this in the last step because this happens after we send action commands to tb2
-        if left > 0:
-            adjust_left = left - np.random.normal(loc=1.8, scale=0.15)
-            left = max(0., adjust_left)
-        else:
-            adjust_left = left + np.random.normal(loc=1.8, scale=0.15)
-            left = min(0., adjust_left)
-
-        if right > 0:
-            adjust_right = right - np.random.normal(loc=1.8, scale=0.15)
-            right = max(0., adjust_right)
-        else:
-            adjust_right = right + np.random.normal(loc=1.8, scale=0.15)
-            right = min(0., adjust_right)
 
         if self.record:
             self.episodeRecoder.wheelVelList.append([left, right])

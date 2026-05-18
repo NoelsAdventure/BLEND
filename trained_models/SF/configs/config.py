@@ -1,5 +1,9 @@
 import numpy as np
-from ..arguments import get_args
+# Originally `from ..arguments import get_args` + `args = get_args()`, which
+# broke when test.py loads this via importlib.util (the inner arguments.py
+# parser saw test.py's CLI args and failed on unrecognized flags). Working
+# baseline configs (LoraF/Fulltune_*) just hardcode the two fields they need —
+# do the same here.
 
 class BaseConfig(object):
     def __init__(self):
@@ -7,9 +11,6 @@ class BaseConfig(object):
 
 
 class Config(object):
-    # for now, import all args from arguments.py
-    args = get_args()
-
     training = BaseConfig()
     env = BaseConfig()
     reward = BaseConfig()
@@ -20,7 +21,7 @@ class Config(object):
     policy = BaseConfig()
     aggressiveness_factor = 0.0 # unused for now
     cv_prediction_steps = 5 # unused to be removed
-    training.device = "cuda:0" if args.cuda else "cpu"
+    training.device = "cuda:0"
 
     aci_related.considered_steps = 2
     aci_related.prediction_extra_buffer_size = 0.0
@@ -50,7 +51,7 @@ class Config(object):
     env.test_size = 500
     # if randomize human behaviors, set to True, else set to False
     env.randomize_attributes = True
-    env.num_processes = args.num_processes
+    env.num_processes = 5
     # record robot states and actions an episode for system identification in sim2real
     env.record = False
     env.load_act = False

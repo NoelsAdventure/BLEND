@@ -1,52 +1,67 @@
 import torch
 import torch.nn as nn
 
+
 class FriendlyPredictor(nn.Module):
-    def __init__(self, human_dim, robot_dim, hidden_dim=64):
-        super(FriendlyPredictor, self).__init__()
-        # 1. Input Projections
-        self.query_proj = nn.Linear(human_dim, hidden_dim)
-        self.key_proj = nn.Linear(robot_dim, hidden_dim)
-        self.value_proj = nn.Linear(human_dim, hidden_dim)
-        
-        # 2. Sequence Modeling: GRU layer
-        # Processes the attended human features
-        self.gru = nn.GRU(hidden_dim, hidden_dim, batch_first=True)
-        
-        # 3. Output Layer: Linear to predict friendliness (binary)
-        self.fc = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 2, 1),
-            nn.Sigmoid() # Friendliness probability between 0 and 1
+    """Per-human binary classifier ('is this human aware of the robot?').
+
+    Architecture: per-human MLP encoder + a small transformer over humans,
+    so the prediction for human i can attend to the rest of the crowd. The
+    robot state is broadcast-added into every human token before attention.
+
+    forward() returns logits. At inference, wrap with sigmoid (or compare
+    against 0.0) to get a probability / decision.
+    """
+
+    def __init__(self, human_dim, robot_dim, hidden_dim=128, num_heads=4,
+                 num_layers=2, dropout=0.1):
+        super().__init__()
+        self.human_dim = human_dim
+        self.robot_dim = robot_dim
+        self.hidden_dim = hidden_dim
+
+        self.human_encoder = nn.Sequential(
+            nn.Linear(human_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
         )
-        
-    def forward(self, human_states, robot_state):
-        # human_states: (batch_size, num_humans, human_dim)
-        # robot_state: (batch_size, robot_dim)
-        
-        # 1. Attention Mechanism (Q=human, K=robot, V=human)
-        # Project humans to Q and V
-        Q = self.query_proj(human_states) # (B, N, H)
-        V = self.value_proj(human_states) # (B, N, H)
-        
-        # Project robot to K
-        K = self.key_proj(robot_state).unsqueeze(1) # (B, 1, H)
-        
-        # Calculate attention scores between every human and the robot
-        # (B, N, H) bmm (B, H, 1) -> (B, N, 1)
-        scores = torch.bmm(Q, K.transpose(1, 2)) / (K.size(-1) ** 0.5)
-        attn_weights = torch.softmax(scores, dim=1) # Normalized across humans
-        
-        # Weight the values
-        # (B, N, 1) * (B, N, H) -> (B, N, H)
-        attended_humans = attn_weights * V 
-        
-        # 2. GRU Processing
-        gru_out, _ = self.gru(attended_humans) # (B, N, H)
-        
-        # 3. Output Prediction (PER HUMAN)
-        # Apply the classifier to each human's feature from the GRU
-        out = self.fc(gru_out) # (B, N, 1)
-        
-        return out.squeeze(-1) # Predict friendliness probability for each human (B, N)
+        self.robot_encoder = nn.Sequential(
+            nn.Linear(robot_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_dim,
+            nhead=num_heads,
+            dim_feedforward=hidden_dim * 4,
+            dropout=dropout,
+            activation='gelu',
+            batch_first=True,
+            norm_first=True,
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, 1),
+        )
+
+    def forward(self, human_states, robot_state, key_padding_mask=None):
+        # human_states: (B, N, human_dim)
+        # robot_state:  (B, robot_dim)
+        # key_padding_mask: (B, N) bool, True = padded slot to ignore
+        h = self.human_encoder(human_states)                 # (B, N, H)
+        r = self.robot_encoder(robot_state).unsqueeze(1)     # (B, 1, H)
+        h = h + r                                            # (B, N, H)
+        h = self.transformer(h, src_key_padding_mask=key_padding_mask)
+        logits = self.classifier(h).squeeze(-1)              # (B, N)
+        return logits
+
+    @torch.no_grad()
+    def predict_proba(self, human_states, robot_state, key_padding_mask=None):
+        return torch.sigmoid(self.forward(human_states, robot_state, key_padding_mask))

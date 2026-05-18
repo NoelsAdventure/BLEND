@@ -45,7 +45,7 @@ class Config(object):
     # whether robot is visible to humans (whether humans respond to the robot's motion)
     robot.visible = False # tag: 05/02/2024
     # LoRA config
-    lora.rank = 4
+    lora.rank = 1
     lora.alpha = 128
     lora.use_lora = False
     # action space of the robot
@@ -55,7 +55,6 @@ class Config(object):
     #################### unfrequently tuned ######################## 
     aggressiveness_factor = 0.0 # unused for now
     reward.intrusion_start_dist = 0.50 # unused
-
 
     env.randomize_attributes = True
     env.time_limit = 50 

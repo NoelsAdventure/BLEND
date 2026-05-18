@@ -105,9 +105,8 @@ class CrowdSimPredRealGST(CrowdSimPred):
         # Pad to max_human_num so vec-env stacking in train.py works under
         # unicycle kinematics, where CrowdSimVarNum picks a random per-env
         # human count in [1, human_num + human_num_range].
-        max_human_num = self.config.sim.human_num + self.config.sim.human_num_range
         pred_horizon = self.humans[0].pred_horizon_aci if self.humans else self.predict_steps
-        aci_predicted_conformity_scores = np.zeros(shape=(max_human_num, pred_horizon))
+        aci_predicted_conformity_scores = np.zeros(shape=(self.max_human_num, pred_horizon))
         for i, human in enumerate(sorted_humans_list):
             if human.last_prediction is None:
                 human.last_aci_predicted_conformity_score = None
