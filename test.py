@@ -189,7 +189,7 @@ def main():
             base_kwargs=algo_args,
             base=config.robot.policy)
         
-        state_dict = torch.load(load_path, map_location=device)
+        state_dict = torch.load(load_path, map_location=device, weights_only=False)
         
         # Map standard Linear to LoRA base_layer if LoRA is enabled
         if hasattr(env_config, 'lora') and getattr(env_config.lora, 'use_lora', False):

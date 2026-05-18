@@ -29,7 +29,7 @@ def _maybe_load_friendly_predictor(behaviour, model_dir, device, logging):
     robot_dim = int(m.get('robot_dim', 2))
 
     predictor = FriendlyPredictor(human_dim=human_dim, robot_dim=robot_dim).to(device)
-    state = torch.load(predictor_path, map_location=device)
+    state = torch.load(predictor_path, map_location=device, weights_only=False)
 
     # Fail loudly on dim mismatch instead of silently mis-loading.
     saved_human_dim = state['query_proj.weight'].shape[1]

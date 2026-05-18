@@ -254,7 +254,7 @@ def train():
             print(f"  --> Best Model Saved (F1: {f1:.4f})")
 
     print(f"\nTraining Complete. Best model saved to {checkpoint_path}")
-    model.load_state_dict(torch.load(checkpoint_path))
+    model.load_state_dict(torch.load(checkpoint_path, weights_only=False))
 
     # --- FINAL EVALUATIONS ON DIFFERENT SCENARIOS ---
     print("\n" + "="*40)

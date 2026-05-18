@@ -1,5 +1,5 @@
 # Step 1: Use the official PyTorch image as a base image
-FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-devel
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
 
 # Step 2: Set the working directory in the container
 WORKDIR /workspace

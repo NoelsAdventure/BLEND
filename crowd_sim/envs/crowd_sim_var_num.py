@@ -503,10 +503,7 @@ class CrowdSimVarNum(CrowdSim):
             done = False
             episode_info = Nothing()
 
-        if self.robot.kinematics == 'unicycle':
-            raise NotImplementedError
-
-        cost = 0 
+        cost = 0
         cost = -cost
         return reward, done, [episode_info, cost]
 

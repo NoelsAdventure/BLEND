@@ -1,5 +1,5 @@
-# GenSafeNav
-This is the codebase for the paper: _[Towards Generalizable Safety in Crowd Navigation via Conformal Uncertainty Handling](https://arxiv.org/abs/2508.05634v1)_.
+# BLEND
+This is the codebase for BLEND, built on top of GenSafeNav: _[Towards Generalizable Safety in Crowd Navigation via Conformal Uncertainty Handling](https://arxiv.org/abs/2508.05634v1)_.
 
 For more information, please also check:
 
@@ -36,7 +36,7 @@ sudo apt-get install nvidia-container-runtime
 2.) Pull the base image
 
 ```bash
-docker pull pytorch/pytorch:2.3.1-cuda12.1-cudnn8-devel
+docker pull pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
 ```
 
 3.) Restart the docker service
@@ -48,13 +48,13 @@ sudo systemctl restart docker
 4.) Go to your current project folder, and build the docker image:
 
 ```bash
-docker build --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) -t gen_safe_py10:latest .
+docker build --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) -t blend:latest .
 ```
 
 5.) Run the docker image by:
 
 ```bash
-docker run --runtime=nvidia -it -p 12345:8888 -v /home/docker_share:/home/ -v $(pwd):/workspace gen_safe_py10:latest /bin/bash
+docker run --gpus '"device=0,1,2,3"' --shm-size=32g -it -p 12345:8888 -v /home/docker_share:/home/dockeruser/shared -v $(pwd):/workspace blend:latest /bin/bash
 ```
 
 6.) Test the pretrained models with `python test.py`
@@ -125,6 +125,4 @@ If you find our work useful, please consider citing our paper:
 
 ## Acknowledgement
 
-We sincerely thank the researchers and developers for [CrowdNav](https://github.com/vita-epfl/CrowdNav), [CrowdNav++](https://github.com/Shuijing725/CrowdNav_Prediction_AttnGraph), [Gumble Social Transformer](https://sites.google.com/view/gumbel-social-transformer), [DtACI](https://github.com/isgibbs/DtACI), and [OmniSafe](https://github.com/PKU-Alignment/omnisafe) for their amazing work.
-# BLEND
-# BLEND
+We sincerely thank the researchers and developers for [CrowdNav](https://github.com/vita-epfl/CrowdNav), [CrowdNav++](https://github.com/Shuijing725/CrowdNav_Prediction_AttnGraph), [Gumble Social Transformer](https://sites.google.com/view/gumbel-social-transformer), [DtACI](https://github.com/isgibbs/DtACI), [OmniSafe](https://github.com/PKU-Alignment/omnisafe), and [GenSafeNav](https://github.com/tasl-lab/GenSafeNav) for their amazing work.
