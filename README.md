@@ -126,5 +126,3 @@ If you find our work useful, please consider citing our paper:
 ## Acknowledgement
 
 We sincerely thank the researchers and developers for [CrowdNav](https://github.com/vita-epfl/CrowdNav), [CrowdNav++](https://github.com/Shuijing725/CrowdNav_Prediction_AttnGraph), [Gumble Social Transformer](https://sites.google.com/view/gumbel-social-transformer), [DtACI](https://github.com/isgibbs/DtACI), and [OmniSafe](https://github.com/PKU-Alignment/omnisafe) for their amazing work.
-# BLEND
-# BLEND
