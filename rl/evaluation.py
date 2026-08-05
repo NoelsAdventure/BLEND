@@ -269,6 +269,91 @@ def _apply_lora_scale(actor_critic, baseEnv, scale, update_modules=True):
         _set_lora_module_scale(actor_critic, scale)
 
 
+class _DenseFullFinetuneInterpolator:
+    """Interpolates dense model parameters against a full-finetune endpoint.
+
+    The active policy is the LoRA model, but this baseline disables LoRA and
+    interpolates only dense weights. LoRA-only tensors are intentionally ignored.
+    """
+    def __init__(self, actor_critic, full_state_dict, device):
+        self.actor_critic = actor_critic
+        self.entries = []
+
+        if hasattr(full_state_dict, 'state_dict'):
+            full_state_dict = full_state_dict.state_dict()
+
+        missing = []
+        mismatched = []
+        for name, param in actor_critic.named_parameters():
+            if 'lora_' in name:
+                continue
+            full_key = self._full_key_for_base_param(name)
+            if full_key not in full_state_dict:
+                missing.append((name, full_key))
+                continue
+
+            full_value = full_state_dict[full_key].detach().to(device=device, dtype=param.dtype)
+            if tuple(full_value.shape) != tuple(param.shape):
+                mismatched.append((name, full_key, tuple(param.shape), tuple(full_value.shape)))
+                continue
+
+            base_value = param.detach().clone()
+            delta = full_value - base_value
+            self.entries.append((param, base_value, delta))
+
+        if missing or mismatched:
+            parts = []
+            if missing:
+                examples = ', '.join(f'{n}->{k}' for n, k in missing[:8])
+                parts.append(f'missing full-finetune params: {examples}')
+            if mismatched:
+                examples = ', '.join(f'{n}->{k} base{bs} full{fs}' for n, k, bs, fs in mismatched[:8])
+                parts.append(f'shape mismatches: {examples}')
+            raise RuntimeError('adaptive_fullfinetune_gt checkpoint mismatch: ' + '; '.join(parts))
+
+        if not self.entries:
+            raise RuntimeError('adaptive_fullfinetune_gt found no dense parameters to interpolate')
+
+    @staticmethod
+    def _full_key_for_base_param(name):
+        return name.replace('.base_layer.weight', '.weight').replace('.base_layer.bias', '.bias')
+
+    def apply(self, kappa):
+        kappa = float(kappa)
+        with torch.no_grad():
+            for param, base_value, delta in self.entries:
+                param.copy_(base_value + kappa * delta)
+
+    def restore_base(self):
+        with torch.no_grad():
+            for param, base_value, _ in self.entries:
+                param.copy_(base_value)
+
+
+def _maybe_build_fullfinetune_interpolator(behaviour, actor_critic, test_args, device, logging):
+    if behaviour != 'adaptive_fullfinetune_gt':
+        return None
+    if actor_critic is None:
+        raise ValueError('adaptive_fullfinetune_gt is only supported for neural policies')
+    if not _has_lora_modules(actor_critic):
+        raise ValueError('adaptive_fullfinetune_gt requires the LoRA model as W_base so base_layer weights are available')
+
+    ft_model_dir = getattr(test_args, 'fullfinetune_model_dir', 'trained_models/FullFineTune_invi_visi')
+    ft_model = getattr(test_args, 'fullfinetune_test_model', '03400.pt')
+    ft_path = os.path.join(ft_model_dir, 'checkpoints', ft_model)
+    if not os.path.exists(ft_path):
+        raise FileNotFoundError(f'Full-finetune endpoint checkpoint not found: {ft_path}')
+
+    full_state = torch.load(ft_path, map_location=device, weights_only=False)
+    interpolator = _DenseFullFinetuneInterpolator(actor_critic, full_state, device)
+    interpolator.apply(0.0)
+    _set_lora_module_scale(actor_critic, 0.0)
+    msg = f'Loaded adaptive_fullfinetune_gt endpoint from {ft_path}; interpolating {len(interpolator.entries)} dense tensors.'
+    logging.info(msg)
+    print(msg)
+    return interpolator
+
+
 def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False, test_args=None, video_save_path=None):
     """ function to run all testing episodes and log the testing metrics """
     # initializations
@@ -320,6 +405,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     if config.robot.policy not in ['orca', 'social_force']:
         if behaviour == 'adaptive_action_gt' and not _has_lora_modules(actor_critic):
             raise ValueError('adaptive_action_gt requires a neural policy with LoRA modules')
+        if behaviour == 'adaptive_fullfinetune_gt' and not _has_lora_modules(actor_critic):
+            raise ValueError('adaptive_fullfinetune_gt requires the LoRA model as W_base')
 
         eval_recurrent_hidden_states = {}
 
@@ -331,8 +418,12 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         eval_recurrent_hidden_states['human_human_edge_rnn'] = torch.zeros(num_processes, edge_num,
                                                                            actor_critic.base.human_human_edge_rnn_size,
                                                                            device=device)
-    elif behaviour == 'adaptive_action_gt':
-        raise ValueError('adaptive_action_gt is only supported for neural LoRA policies')
+    elif behaviour in {'adaptive_action_gt', 'adaptive_fullfinetune_gt'}:
+        raise ValueError(f'{behaviour} is only supported for neural LoRA policies')
+
+    fullfinetune_interpolator = _maybe_build_fullfinetune_interpolator(
+        behaviour, actor_critic, test_args, device, logging
+    )
 
     eval_masks = torch.zeros(num_processes, 1, device=device)
 
@@ -456,7 +547,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         # Behaviours that drive the per-step adaptive/switching loop.
         _ADAPTIVE_BEHAVIOURS = {
             'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred',
-            'adaptive_gt', 'adaptive_action_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
+            'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
         }
 
         if scenario == 'seperate_mixed_5050':
@@ -511,6 +602,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 _apply_lora_scale(actor_critic, baseEnv, 1.0)
             else:
                 baseEnv.robot.lora_enabled = _has_lora_modules(actor_critic)
+
+        if behaviour == 'adaptive_fullfinetune_gt':
+            _set_lora_module_scale(actor_critic, 0.0)
+            fullfinetune_interpolator.apply(baseEnv.robot.lora_scale)
 
         # Initialize prev_predictions before the loop for tracking discrepancy
         prev_predictions = {}
@@ -673,7 +768,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         tn += 1
 
             # Continuous adaptive scale or majority-based switching
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
                 robot_pos = baseEnv.robot.get_position()
                 robot_theta = obs['robot_node'][0, 0, 6].item() # robot heading
 
@@ -747,6 +842,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         print(f"\n>>> Step {stepCounter}: {msg}. Target Scale = {target_scale:.2f}")
                 if behaviour == 'adaptive_action_gt':
                     _apply_lora_scale(actor_critic, baseEnv, target_scale, update_modules=False)
+                elif behaviour == 'adaptive_fullfinetune_gt':
+                    _apply_lora_scale(actor_critic, baseEnv, target_scale, update_modules=False)
+                    _set_lora_module_scale(actor_critic, 0.0)
+                    fullfinetune_interpolator.apply(target_scale)
                 else:
                     _apply_lora_scale(actor_critic, baseEnv, target_scale)
             
@@ -1026,6 +1125,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         'lora_alpha': getattr(getattr(config, 'lora', object()), 'alpha', None),
         'lora_rank': getattr(getattr(config, 'lora', object()), 'rank', None),
         'lora_scale': lora_scale,
+        'fullfinetune_model_dir': getattr(test_args, 'fullfinetune_model_dir', None),
+        'fullfinetune_test_model': getattr(test_args, 'fullfinetune_test_model', None),
         'test_model': getattr(test_args, 'test_model', None),
         'model_dir': model_dir
     }
@@ -1170,5 +1271,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     with open(data_path, 'w') as f:
         json.dump(all_discrepancy_data, f, indent=4)
     logging.info(f"Discrepancy data saved to {data_path}")
+
+    if fullfinetune_interpolator is not None:
+        fullfinetune_interpolator.restore_base()
+        _set_lora_module_scale(actor_critic, 0.0)
 
     eval_envs.close()

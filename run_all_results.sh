@@ -23,7 +23,8 @@
 #   SEEDS="10 20 42"      ./run_all_results.sh        # 3 seeds
 #   OUTER_PARALLEL=3      ./run_all_results.sh        # run more sub-scripts concurrently
 #   MAX_PARALLEL_PER_SCRIPT=2 ./run_all_results.sh    # GPU-constrained mode
-#   ADAPTIVE_BEHAVIOURS="adaptive_action_gt" ./run_all_results.sh  # rebuttal only
+#   ADAPTIVE_BEHAVIOURS="adaptive_action_gt" ./run_all_results.sh  # action-space rebuttal only
+#   ADAPTIVE_BEHAVIOURS="adaptive_action_gt adaptive_fullfinetune_gt" ./run_all_results.sh
 #   SKIP_ABLATION=1       ./run_all_results.sh        # baselines + adaptive only
 #   SKIP_BASELINES=1 SKIP_ADAPTIVE=1 ./run_all_results.sh  # ablation only
 

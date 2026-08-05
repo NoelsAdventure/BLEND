@@ -98,12 +98,13 @@ read -r -a SCENARIOS_ARR <<< "$SCENARIOS"
 # Default comparison: existing weight-space adaptive_gt vs action-space
 # adaptive_action_gt. Override with:
 #   ADAPTIVE_BEHAVIOURS="adaptive_action_gt" ./test_adaptive_lora_poc.sh
+#   ADAPTIVE_BEHAVIOURS="adaptive_action_gt adaptive_fullfinetune_gt" ./test_adaptive_lora_poc.sh
 # Use adaptive_gt alone with --save_episode_dump always when regenerating the
 # *_adaptive_gt.json training anchors.
-ADAPTIVE_BEHAVIOURS="${ADAPTIVE_BEHAVIOURS:-adaptive_action_gt}"
+ADAPTIVE_BEHAVIOURS="${ADAPTIVE_BEHAVIOURS:-adaptive_fullfinetune_gt}"
 read -r -a BEHAVIOURS <<< "$ADAPTIVE_BEHAVIOURS"
 # BEHAVIOURS=("adaptive_discrepancy")
-# BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "adaptive_pred")
+# BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "adaptive_pred" "adaptive_action_gt" "adaptive_fullfinetune_gt")
 # BEHAVIOURS=("switching_pred" "adaptive_pred")
 # BEHAVIOURS=("always_off")
 

@@ -41,7 +41,7 @@ def main():
     # test.py — they share the same Adaptive-LoRA CLI surface so the same
     # shell scripts (test_adaptive_lora_poc.sh) can drive either entry point.
     parser.add_argument('--lora_scale', type=float, default=1.0)
-    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred', 'none'], default='adaptive_discrepancy')
+    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred', 'none'], default='adaptive_discrepancy')
     parser.add_argument('--discrepancy_threshold', type=float, default=0.05, help='Threshold for classifying a human as aware/friendly based on discrepancy score')
     parser.add_argument("--discrepancy_m", type=int, default=1, help="Number of consecutive times the score must be above threshold to classify as aware")
     parser.add_argument('--exp_id', type=str, default=None)
@@ -58,6 +58,10 @@ def main():
     parser.add_argument('--awareness_eval', type=str,
                         choices=['always', 'pred_only', 'off'], default='always',
                         help='Same flag as test.py — see test.py --help for details.')
+    parser.add_argument('--fullfinetune_model_dir', type=str, default='trained_models/FullFineTune_invi_visi',
+                        help='Endpoint model directory for adaptive_fullfinetune_gt dense-weight interpolation.')
+    parser.add_argument('--fullfinetune_test_model', type=str, default='03400.pt',
+                        help='Endpoint checkpoint filename for adaptive_fullfinetune_gt dense-weight interpolation.')
     parser.add_argument('--predictor_tag', type=str, default=None,
                         help='Same flag as test.py — see test.py --help for details.')
     parser.add_argument('--save_episode_dump', type=str, default='auto',
