@@ -158,7 +158,9 @@ def main():
                     trainable_params.append(name)
             print(f"LoRA mode: {len(trainable_params)} parameters are trainable in {model.__class__.__name__}")
 
-    # Move networks to GPU if available
+    # Move networks to GPU if available. Note: DataParallel is used only for the
+    # .to(device) side effect (params are shared in-place); we keep the original
+    # Policy objects so custom methods like .act()/.evaluate_actions() stay accessible.
     nn.DataParallel(actor_critic).to(device)
     nn.DataParallel(cost_actor_critic).to(device)
 
@@ -525,7 +527,7 @@ def main():
 
             torch.save(actor_critic.state_dict(),
                        os.path.join(save_path, '%.5i' % j + ".pt"))
-            
+
             torch.save(cost_actor_critic.state_dict(),
                        os.path.join(cost_save_path, '%.5i' % j + ".pt"))
 

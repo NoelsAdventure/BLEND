@@ -283,6 +283,12 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
     behaviour = getattr(test_args, 'lora_behaviour', 'none')
     predictor_tag = getattr(test_args, 'predictor_tag', None) or None
+    # Parse --render_only_cases into a set of ints; None = render all episodes.
+    _roc = getattr(test_args, 'render_only_cases', None)
+    if _roc:
+        render_only_cases = {int(x) for x in _roc.split(',') if x.strip()}
+    else:
+        render_only_cases = None
     friendly_predictor = _maybe_load_friendly_predictor(behaviour, model_dir, device, logging,
                                                        predictor_tag=predictor_tag)
     if friendly_predictor == 'SKIP_TAG_MISSING':
@@ -414,6 +420,13 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         
         # Default lora_scale from args
         baseEnv.robot.lora_scale = getattr(test_args, 'lora_scale', 1.0)
+
+        # Plumb behaviour + LoRA-capability onto the env so plot_scenario can
+        # (a) show the dynamic scale only for adaptive_* runs and (b) recolor
+        # non-LoRA baselines (e.g. FullFineTune) red instead of the
+        # lora_scale=0 yellow default.
+        baseEnv.lora_behaviour = behaviour
+        baseEnv.is_lora_model = bool(getattr(getattr(config, 'lora', None), 'use_lora', False))
 
         # Clean up any leftover PoC attributes from previous episodes
         if hasattr(baseEnv.robot, 'visible_to_humans'):
@@ -596,10 +609,24 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # human. This populates the AwAcc / AwF1 / TP-FP-TN-FN stats
             # shown in the progress bar, so `adaptive_gt` etc. report the
             # predictor quality too without affecting the policy.
-            pred_friendly_probs = _compute_pred_friendly_probs(
-                friendly_predictor, out_pred, aci_predicted_conformity_scores,
-                baseEnv, r_state_vec, device,
+            #
+            # Skip the forward pass entirely when neither the policy needs it
+            # (`*_pred` behaviours) nor shadow-eval is enabled. This avoids
+            # wasted compute AND keeps non-pred runs (e.g. fixed_scale
+            # ablation) tolerant of feature-dim mismatches between the
+            # build_human_feature_row() in train_alpha_predictor.py and the
+            # on-disk predictor checkpoint.
+            _predictor_needed = (
+                friendly_predictor is not None and
+                ('_pred' in behaviour or eval_predictor_this_run)
             )
+            if _predictor_needed:
+                pred_friendly_probs = _compute_pred_friendly_probs(
+                    friendly_predictor, out_pred, aci_predicted_conformity_scores,
+                    baseEnv, r_state_vec, device,
+                )
+            else:
+                pred_friendly_probs = {}
             if friendly_predictor is not None and eval_predictor_this_run:
                 _robot_pos_shadow = baseEnv.robot.get_position()
                 for _i, _human in enumerate(baseEnv.humans):
@@ -779,7 +806,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             # if the vec_pretext_normalize.py wrapper is used, send the predicted traj to env
             if visualize:
                 eval_envs.render()
-                if video_save_path:
+                if video_save_path and (render_only_cases is None or k in render_only_cases):
                     baseEnv.plot_step(video_save_path)
 
             # Obser reward and next obs
@@ -923,7 +950,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             else:
                 print(f"\n{summary_str}")
 
-        if video_save_path:
+        if video_save_path and (render_only_cases is None or k in render_only_cases):
             baseEnv.animate_episode(video_save_path, f"{exp_id}_ep{k}_{episode_result}",
                                     outcome=episode_result, avg_lora_scale=avg_lora_scale,
                                     behaviour=behaviour)

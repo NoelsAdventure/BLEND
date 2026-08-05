@@ -29,17 +29,17 @@
 set -u
 
 # --- Config ---------------------------------------------------------------
-SEEDS="${SEEDS:-10 20}"
+SEEDS="${SEEDS:-42 1000 2000 3000 4000}"
 OUTER_PARALLEL="${OUTER_PARALLEL:-3}"        # how many sub-scripts run concurrently
 MAX_PARALLEL_PER_SCRIPT="${MAX_PARALLEL_PER_SCRIPT:-4}"  # per sub-script
-TEST_SIZE="${TEST_SIZE:-500}"
+TEST_SIZE="${TEST_SIZE:-1250}"
 HUMAN_NUM="${HUMAN_NUM:-20}"
 SCENARIOS="${SCENARIOS:-seperate_mixed_5050 seperate_all_aware seperate_all_ignorant cluster_aware_ignorant}"
 
 # Sub-script toggles (1 to skip)
 SKIP_BASELINES="${SKIP_BASELINES:-0}"
 SKIP_ADAPTIVE="${SKIP_ADAPTIVE:-0}"
-SKIP_ABLATION="${SKIP_ABLATION:-0}"
+SKIP_ABLATION="${SKIP_ABLATION:-1}"
 
 # Export the per-sub-script knobs so they reach the child invocations
 export MAX_PARALLEL="$MAX_PARALLEL_PER_SCRIPT"
@@ -114,8 +114,8 @@ _count_combos_done() {
     local log
     for log in "$LOG_DIR"/*_seed*.log; do
         [ -f "$log" ] || continue
-        local n=$(grep -cE "^\[[0-9:]+\] (OK|FAIL) " "$log" 2>/dev/null || echo 0)
-        d=$((d + n))
+        local n=$(grep -cE "^\[[0-9:]+\] (OK|FAIL) " "$log" 2>/dev/null)
+        d=$((d + ${n:-0}))
     done
     echo "$d"
 }

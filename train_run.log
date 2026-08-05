@@ -1,0 +1,161 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Logging to /tmp/openai-2026-05-21-16-47-33-025978
+Creating dummy env object to get spaces
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+<Monitor<CrowdSimPredRealGST instance>>
+
+[Actor-Critic] Total Parameters: 2,503,173
+[Actor-Critic] Trainable Parameters: 2,503,173 (100.00%)
+[Cost-Critic] Total Parameters: 2,503,173
+[Cost-Critic] Trainable Parameters: 2,503,173 (100.00%)
+Unicycle_naive_scratch:   0%|          | 0/5208 [00:00<?, ?it/s]Unicycle_naive_scratch:   0%|          | 0/5208 [00:02<?, ?it/s, SR=0.00, CR=1.00, PL=9.78, Rew=-14.83, Cost=2.37]                                                                                                                  Updates 0, num timesteps 3840, FPS 1335 
+Total Sim Time: 1.65s, Total Train Time: 1.21s
+Last 8 training episodes: mean/median reward -14.8/-14.7, mean/median cost 2.4/2.2, min/max reward -16.8/-13.4
+
+Unicycle_naive_scratch:   0%|          | 0/5208 [00:02<?, ?it/s, SR=0.00, CR=1.00, PL=9.78, Rew=-14.83, Cost=2.37]                                                                                                                  Collision rate: 1.00, Success rate: 0.00, Path length: 9.78
+Unicycle_naive_scratch:   0%|          | 0/5208 [00:02<?, ?it/s, SR=0.00, CR=1.00, PL=9.78, Rew=-14.83, Cost=2.37]Unicycle_naive_scratch:   0%|          | 1/5208 [00:02<4:09:37,  2.88s/it, SR=0.00, CR=1.00, PL=9.78, Rew=-14.83, Cost=2.37]Unicycle_naive_scratch:   0%|          | 1/5208 [00:05<4:09:37,  2.88s/it, SR=0.00, CR=1.00, PL=10.40, Rew=-14.17, Cost=2.39]Unicycle_naive_scratch:   0%|          | 2/5208 [00:05<4:17:04,  2.96s/it, SR=0.00, CR=1.00, PL=10.40, Rew=-14.17, Cost=2.39]Unicycle_naive_scratch:   0%|          | 2/5208 [00:08<4:17:04,  2.96s/it, SR=0.12, CR=0.88, PL=11.20, Rew=-8.43, Cost=2.22] Unicycle_naive_scratch:   0%|          | 3/5208 [00:08<4:17:58,  2.97s/it, SR=0.12, CR=0.88, PL=11.20, Rew=-8.43, Cost=2.22]Unicycle_naive_scratch:   0%|          | 3/5208 [00:11<4:17:58,  2.97s/it, SR=0.18, CR=0.82, PL=12.16, Rew=-5.39, Cost=2.30]Unicycle_naive_scratch:   0%|          | 4/5208 [00:11<4:18:30,  2.98s/it, SR=0.18, CR=0.82, PL=12.16, Rew=-5.39, Cost=2.30]Unicycle_naive_scratch:   0%|          | 4/5208 [00:14<4:18:30,  2.98s/it, SR=0.17, CR=0.83, PL=13.17, Rew=-5.46, Cost=2.61]Unicycle_naive_scratch:   0%|          | 5/5208 [00:14<4:19:19,  2.99s/it, SR=0.17, CR=0.83, PL=13.17, Rew=-5.46, Cost=2.61]Unicycle_naive_scratch:   0%|          | 5/5208 [00:17<4:19:19,  2.99s/it, SR=0.17, CR=0.83, PL=13.68, Rew=-5.44, Cost=2.62]Unicycle_naive_scratch:   0%|          | 6/5208 [00:17<4:20:53,  3.01s/it, SR=0.17, CR=0.83, PL=13.68, Rew=-5.44, Cost=2.62]Unicycle_naive_scratch:   0%|          | 6/5208 [00:21<4:20:53,  3.01s/it, SR=0.08, CR=0.30, PL=30.98, Rew=-5.73, Cost=2.75]Unicycle_naive_scratch:   0%|          | 7/5208 [00:21<4:24:23,  3.05s/it, SR=0.08, CR=0.30, PL=30.98, Rew=-5.73, Cost=2.75]Unicycle_naive_scratch:   0%|          | 7/5208 [00:24<4:24:23,  3.05s/it, SR=0.07, CR=0.32, PL=30.64, Rew=-6.40, Cost=2.72]Unicycle_naive_scratch:   0%|          | 8/5208 [00:24<4:30:51,  3.13s/it, SR=0.07, CR=0.32, PL=30.64, Rew=-6.40, Cost=2.72]Unicycle_naive_scratch:   0%|          | 8/5208 [00:27<4:30:51,  3.13s/it, SR=0.06, CR=0.35, PL=29.88, Rew=-6.65, Cost=2.74]Unicycle_naive_scratch:   0%|          | 9/5208 [00:27<4:36:21,  3.19s/it, SR=0.06, CR=0.35, PL=29.88, Rew=-6.65, Cost=2.74]Unicycle_naive_scratch:   0%|          | 9/5208 [00:30<4:36:21,  3.19s/it, SR=0.06, CR=0.36, PL=29.53, Rew=-6.42, Cost=2.74]Unicycle_naive_scratch:   0%|          | 10/5208 [00:30<4:36:07,  3.19s/it, SR=0.06, CR=0.36, PL=29.53, Rew=-6.42, Cost=2.74]Unicycle_naive_scratch:   0%|          | 10/5208 [00:33<4:36:07,  3.19s/it, SR=0.06, CR=0.36, PL=29.22, Rew=-6.25, Cost=2.71]Unicycle_naive_scratch:   0%|          | 11/5208 [00:33<4:33:48,  3.16s/it, SR=0.06, CR=0.36, PL=29.22, Rew=-6.25, Cost=2.71]Unicycle_naive_scratch:   0%|          | 11/5208 [00:37<4:33:48,  3.16s/it, SR=0.06, CR=0.36, PL=29.29, Rew=-6.37, Cost=2.69]Unicycle_naive_scratch:   0%|          | 12/5208 [00:37<4:31:04,  3.13s/it, SR=0.06, CR=0.36, PL=29.29, Rew=-6.37, Cost=2.69]Unicycle_naive_scratch:   0%|          | 12/5208 [00:40<4:31:04,  3.13s/it, SR=0.06, CR=0.37, PL=29.05, Rew=-6.09, Cost=2.72]Unicycle_naive_scratch:   0%|          | 13/5208 [00:40<4:28:34,  3.10s/it, SR=0.06, CR=0.37, PL=29.05, Rew=-6.09, Cost=2.72]Unicycle_naive_scratch:   0%|          | 13/5208 [00:43<4:28:34,  3.10s/it, SR=0.05, CR=0.29, PL=30.33, Rew=-4.75, Cost=2.71]Unicycle_naive_scratch:   0%|          | 14/5208 [00:43<4:34:15,  3.17s/it, SR=0.05, CR=0.29, PL=30.33, Rew=-4.75, Cost=2.71]Unicycle_naive_scratch:   0%|          | 14/5208 [00:46<4:34:15,  3.17s/it, SR=0.05, CR=0.30, PL=29.63, Rew=-4.33, Cost=2.68]Unicycle_naive_scratch:   0%|          | 15/5208 [00:46<4:39:58,  3.23s/it, SR=0.05, CR=0.30, PL=29.63, Rew=-4.33, Cost=2.68]Unicycle_naive_scratch:   0%|          | 15/5208 [00:50<4:39:58,  3.23s/it, SR=0.05, CR=0.31, PL=29.22, Rew=-4.29, Cost=2.67]Unicycle_naive_scratch:   0%|          | 16/5208 [00:50<4:41:23,  3.25s/it, SR=0.05, CR=0.31, PL=29.22, Rew=-4.29, Cost=2.67]Unicycle_naive_scratch:   0%|          | 16/5208 [00:53<4:41:23,  3.25s/it, SR=0.05, CR=0.32, PL=28.76, Rew=-4.04, Cost=2.70]Unicycle_naive_scratch:   0%|          | 17/5208 [00:53<4:44:04,  3.28s/it, SR=0.05, CR=0.32, PL=28.76, Rew=-4.04, Cost=2.70]Unicycle_naive_scratch:   0%|          | 17/5208 [00:56<4:44:04,  3.28s/it, SR=0.05, CR=0.33, PL=28.50, Rew=-4.08, Cost=2.69]Unicycle_naive_scratch:   0%|          | 18/5208 [00:56<4:42:50,  3.27s/it, SR=0.05, CR=0.33, PL=28.50, Rew=-4.08, Cost=2.69]Unicycle_naive_scratch:   0%|          | 18/5208 [00:59<4:42:50,  3.27s/it, SR=0.05, CR=0.34, PL=28.27, Rew=-4.05, Cost=2.71]Unicycle_naive_scratch:   0%|          | 19/5208 [00:59<4:42:07,  3.26s/it, SR=0.05, CR=0.34, PL=28.27, Rew=-4.05, Cost=2.71]Unicycle_naive_scratch:   0%|          | 19/5208 [01:03<4:42:07,  3.26s/it, SR=0.05, CR=0.31, PL=28.31, Rew=-3.23, Cost=2.78]Unicycle_naive_scratch:   0%|          | 20/5208 [01:03<4:43:08,  3.27s/it, SR=0.05, CR=0.31, PL=28.31, Rew=-3.23, Cost=2.78]Unicycle_naive_scratch:   0%|          | 20/5208 [01:06<4:43:08,  3.27s/it, SR=0.05, CR=0.32, PL=27.72, Rew=-3.51, Cost=2.75]                                                                                                                             Updates 20, num timesteps 80640, FPS 1213 
+Total Sim Time: 41.50s, Total Train Time: 24.83s
+Last 493 training episodes: mean/median reward -3.5/-6.0, mean/median cost 2.7/2.2, min/max reward -35.3/36.0
+
+Unicycle_naive_scratch:   0%|          | 20/5208 [01:06<4:43:08,  3.27s/it, SR=0.05, CR=0.32, PL=27.72, Rew=-3.51, Cost=2.75]                                                                                                                             Collision rate: 0.32, Success rate: 0.05, Path length: 27.72
+Unicycle_naive_scratch:   0%|          | 20/5208 [01:06<4:43:08,  3.27s/it, SR=0.05, CR=0.32, PL=27.72, Rew=-3.51, Cost=2.75]Unicycle_naive_scratch:   0%|          | 21/5208 [01:06<4:41:55,  3.26s/it, SR=0.05, CR=0.32, PL=27.72, Rew=-3.51, Cost=2.75]Unicycle_naive_scratch:   0%|          | 21/5208 [01:09<4:41:55,  3.26s/it, SR=0.05, CR=0.31, PL=27.88, Rew=-3.18, Cost=2.78]Unicycle_naive_scratch:   0%|          | 22/5208 [01:09<4:40:54,  3.25s/it, SR=0.05, CR=0.31, PL=27.88, Rew=-3.18, Cost=2.78]Unicycle_naive_scratch:   0%|          | 22/5208 [01:12<4:40:54,  3.25s/it, SR=0.04, CR=0.28, PL=28.43, Rew=-2.84, Cost=2.81]Unicycle_naive_scratch:   0%|          | 23/5208 [01:12<4:41:18,  3.26s/it, SR=0.04, CR=0.28, PL=28.43, Rew=-2.84, Cost=2.81]Unicycle_naive_scratch:   0%|          | 23/5208 [01:15<4:41:18,  3.26s/it, SR=0.04, CR=0.27, PL=28.68, Rew=-2.77, Cost=2.81]Unicycle_naive_scratch:   0%|          | 24/5208 [01:15<4:36:05,  3.20s/it, SR=0.04, CR=0.27, PL=28.68, Rew=-2.77, Cost=2.81]Unicycle_naive_scratch:   0%|          | 24/5208 [01:19<4:36:05,  3.20s/it, SR=0.03, CR=0.27, PL=28.52, Rew=-2.81, Cost=2.80]Unicycle_naive_scratch:   0%|          | 25/5208 [01:19<4:35:21,  3.19s/it, SR=0.03, CR=0.27, PL=28.52, Rew=-2.81, Cost=2.80]Unicycle_naive_scratch:   0%|          | 25/5208 [01:22<4:35:21,  3.19s/it, SR=0.03, CR=0.28, PL=28.06, Rew=-2.64, Cost=2.82]Unicycle_naive_scratch:   0%|          | 26/5208 [01:22<4:33:36,  3.17s/it, SR=0.03, CR=0.28, PL=28.06, Rew=-2.64, Cost=2.82]Unicycle_naive_scratch:   0%|          | 26/5208 [01:25<4:33:36,  3.17s/it, SR=0.03, CR=0.29, PL=26.68, Rew=-1.56, Cost=2.82]Unicycle_naive_scratch:   1%|          | 27/5208 [01:25<4:39:41,  3.24s/it, SR=0.03, CR=0.29, PL=26.68, Rew=-1.56, Cost=2.82]Unicycle_naive_scratch:   1%|          | 27/5208 [01:28<4:39:41,  3.24s/it, SR=0.03, CR=0.30, PL=25.51, Rew=-1.05, Cost=2.81]Unicycle_naive_scratch:   1%|          | 28/5208 [01:28<4:40:24,  3.25s/it, SR=0.03, CR=0.30, PL=25.51, Rew=-1.05, Cost=2.81]Unicycle_naive_scratch:   1%|          | 28/5208 [01:32<4:40:24,  3.25s/it, SR=0.04, CR=0.30, PL=25.39, Rew=-0.73, Cost=2.84]Unicycle_naive_scratch:   1%|          | 29/5208 [01:32<4:40:06,  3.25s/it, SR=0.04, CR=0.30, PL=25.39, Rew=-0.73, Cost=2.84]Unicycle_naive_scratch:   1%|          | 29/5208 [01:35<4:40:06,  3.25s/it, SR=0.03, CR=0.28, PL=25.26, Rew=-0.24, Cost=2.89]Unicycle_naive_scratch:   1%|          | 30/5208 [01:35<4:43:48,  3.29s/it, SR=0.03, CR=0.28, PL=25.26, Rew=-0.24, Cost=2.89]Unicycle_naive_scratch:   1%|          | 30/5208 [01:38<4:43:48,  3.29s/it, SR=0.03, CR=0.28, PL=25.09, Rew=-0.08, Cost=2.90]Unicycle_naive_scratch:   1%|          | 31/5208 [01:38<4:46:36,  3.32s/it, SR=0.03, CR=0.28, PL=25.09, Rew=-0.08, Cost=2.90]Unicycle_naive_scratch:   1%|          | 31/5208 [01:42<4:46:36,  3.32s/it, SR=0.03, CR=0.28, PL=24.89, Rew=0.11, Cost=2.93] Unicycle_naive_scratch:   1%|          | 32/5208 [01:42<4:47:38,  3.33s/it, SR=0.03, CR=0.28, PL=24.89, Rew=0.11, Cost=2.93]Unicycle_naive_scratch:   1%|          | 32/5208 [01:45<4:47:38,  3.33s/it, SR=0.03, CR=0.29, PL=24.04, Rew=0.37, Cost=2.93]Unicycle_naive_scratch:   1%|          | 33/5208 [01:45<4:49:34,  3.36s/it, SR=0.03, CR=0.29, PL=24.04, Rew=0.37, Cost=2.93]Unicycle_naive_scratch:   1%|          | 33/5208 [01:49<4:49:34,  3.36s/it, SR=0.03, CR=0.30, PL=23.46, Rew=0.68, Cost=2.96]Unicycle_naive_scratch:   1%|          | 34/5208 [01:49<4:49:52,  3.36s/it, SR=0.03, CR=0.30, PL=23.46, Rew=0.68, Cost=2.96]Unicycle_naive_scratch:   1%|          | 34/5208 [01:52<4:49:52,  3.36s/it, SR=0.03, CR=0.30, PL=23.22, Rew=0.69, Cost=3.03]Unicycle_naive_scratch:   1%|          | 35/5208 [01:52<4:47:44,  3.34s/it, SR=0.03, CR=0.30, PL=23.22, Rew=0.69, Cost=3.03]Unicycle_naive_scratch:   1%|          | 35/5208 [01:55<4:47:44,  3.34s/it, SR=0.04, CR=0.29, PL=23.23, Rew=1.12, Cost=3.04]Unicycle_naive_scratch:   1%|          | 36/5208 [01:55<4:45:31,  3.31s/it, SR=0.04, CR=0.29, PL=23.23, Rew=1.12, Cost=3.04]Unicycle_naive_scratch:   1%|          | 36/5208 [01:59<4:45:31,  3.31s/it, SR=0.04, CR=0.28, PL=23.13, Rew=1.28, Cost=3.03]Unicycle_naive_scratch:   1%|          | 37/5208 [01:59<4:47:27,  3.34s/it, SR=0.04, CR=0.28, PL=23.13, Rew=1.28, Cost=3.03]Unicycle_naive_scratch:   1%|          | 37/5208 [02:02<4:47:27,  3.34s/it, SR=0.04, CR=0.27, PL=23.15, Rew=1.86, Cost=3.07]Unicycle_naive_scratch:   1%|          | 38/5208 [02:02<4:48:59,  3.35s/it, SR=0.04, CR=0.27, PL=23.15, Rew=1.86, Cost=3.07]Unicycle_naive_scratch:   1%|          | 38/5208 [02:05<4:48:59,  3.35s/it, SR=0.04, CR=0.27, PL=23.14, Rew=1.87, Cost=3.07]Unicycle_naive_scratch:   1%|          | 39/5208 [02:05<4:46:24,  3.32s/it, SR=0.04, CR=0.27, PL=23.14, Rew=1.87, Cost=3.07]Unicycle_naive_scratch:   1%|          | 39/5208 [02:09<4:46:24,  3.32s/it, SR=0.05, CR=0.26, PL=22.78, Rew=2.56, Cost=3.05]Unicycle_naive_scratch:   1%|          | 40/5208 [02:09<4:51:21,  3.38s/it, SR=0.05, CR=0.26, PL=22.78, Rew=2.56, Cost=3.05]Unicycle_naive_scratch:   1%|          | 40/5208 [02:12<4:51:21,  3.38s/it, SR=0.06, CR=0.26, PL=22.58, Rew=3.39, Cost=3.07]                                                                                                                            Updates 40, num timesteps 157440, FPS 1186 
+Total Sim Time: 84.20s, Total Train Time: 48.30s
+Last 500 training episodes: mean/median reward 3.4/4.5, mean/median cost 3.1/2.7, min/max reward -23.5/33.9
+
+Unicycle_naive_scratch:   1%|          | 40/5208 [02:12<4:51:21,  3.38s/it, SR=0.06, CR=0.26, PL=22.58, Rew=3.39, Cost=3.07]                                                                                                                            Collision rate: 0.26, Success rate: 0.06, Path length: 22.58
+Unicycle_naive_scratch:   1%|          | 40/5208 [02:12<4:51:21,  3.38s/it, SR=0.06, CR=0.26, PL=22.58, Rew=3.39, Cost=3.07]Unicycle_naive_scratch:   1%|          | 41/5208 [02:12<4:53:21,  3.41s/it, SR=0.06, CR=0.26, PL=22.58, Rew=3.39, Cost=3.07]Unicycle_naive_scratch:   1%|          | 41/5208 [02:15<4:53:21,  3.41s/it, SR=0.06, CR=0.26, PL=22.51, Rew=3.50, Cost=3.09]Unicycle_naive_scratch:   1%|          | 42/5208 [02:15<4:49:31,  3.36s/it, SR=0.06, CR=0.26, PL=22.51, Rew=3.50, Cost=3.09]Unicycle_naive_scratch:   1%|          | 42/5208 [02:19<4:49:31,  3.36s/it, SR=0.06, CR=0.26, PL=22.25, Rew=3.75, Cost=3.07]Unicycle_naive_scratch:   1%|          | 43/5208 [02:19<4:51:19,  3.38s/it, SR=0.06, CR=0.26, PL=22.25, Rew=3.75, Cost=3.07]Unicycle_naive_scratch:   1%|          | 43/5208 [02:22<4:51:19,  3.38s/it, SR=0.06, CR=0.27, PL=22.16, Rew=3.91, Cost=3.06]Unicycle_naive_scratch:   1%|          | 44/5208 [02:22<4:47:02,  3.34s/it, SR=0.06, CR=0.27, PL=22.16, Rew=3.91, Cost=3.06]Unicycle_naive_scratch:   1%|          | 44/5208 [02:25<4:47:02,  3.34s/it, SR=0.06, CR=0.25, PL=22.29, Rew=4.36, Cost=3.09]Unicycle_naive_scratch:   1%|          | 45/5208 [02:25<4:47:10,  3.34s/it, SR=0.06, CR=0.25, PL=22.29, Rew=4.36, Cost=3.09]Unicycle_naive_scratch:   1%|          | 45/5208 [02:29<4:47:10,  3.34s/it, SR=0.07, CR=0.26, PL=22.08, Rew=4.46, Cost=3.11]Unicycle_naive_scratch:   1%|          | 46/5208 [02:29<4:43:42,  3.30s/it, SR=0.07, CR=0.26, PL=22.08, Rew=4.46, Cost=3.11]Unicycle_naive_scratch:   1%|          | 46/5208 [02:32<4:43:42,  3.30s/it, SR=0.07, CR=0.27, PL=21.89, Rew=4.31, Cost=3.09]Unicycle_naive_scratch:   1%|          | 47/5208 [02:32<4:41:20,  3.27s/it, SR=0.07, CR=0.27, PL=21.89, Rew=4.31, Cost=3.09]Unicycle_naive_scratch:   1%|          | 47/5208 [02:35<4:41:20,  3.27s/it, SR=0.07, CR=0.27, PL=21.86, Rew=4.62, Cost=3.08]Unicycle_naive_scratch:   1%|          | 48/5208 [02:35<4:38:51,  3.24s/it, SR=0.07, CR=0.27, PL=21.86, Rew=4.62, Cost=3.08]Unicycle_naive_scratch:   1%|          | 48/5208 [02:38<4:38:51,  3.24s/it, SR=0.07, CR=0.26, PL=21.83, Rew=4.94, Cost=3.07]Unicycle_naive_scratch:   1%|          | 49/5208 [02:38<4:37:40,  3.23s/it, SR=0.07, CR=0.26, PL=21.83, Rew=4.94, Cost=3.07]Unicycle_naive_scratch:   1%|          | 49/5208 [02:41<4:37:40,  3.23s/it, SR=0.07, CR=0.26, PL=21.79, Rew=5.47, Cost=3.03]Unicycle_naive_scratch:   1%|          | 50/5208 [02:41<4:35:36,  3.21s/it, SR=0.07, CR=0.26, PL=21.79, Rew=5.47, Cost=3.03]Unicycle_naive_scratch:   1%|          | 50/5208 [02:45<4:35:36,  3.21s/it, SR=0.08, CR=0.26, PL=21.71, Rew=5.70, Cost=3.00]Unicycle_naive_scratch:   1%|          | 51/5208 [02:45<4:33:36,  3.18s/it, SR=0.08, CR=0.26, PL=21.71, Rew=5.70, Cost=3.00]Unicycle_naive_scratch:   1%|          | 51/5208 [02:48<4:33:36,  3.18s/it, SR=0.08, CR=0.26, PL=21.59, Rew=5.82, Cost=2.91]Unicycle_naive_scratch:   1%|          | 52/5208 [02:48<4:34:55,  3.20s/it, SR=0.08, CR=0.26, PL=21.59, Rew=5.82, Cost=2.91]Unicycle_naive_scratch:   1%|          | 52/5208 [02:51<4:34:55,  3.20s/it, SR=0.09, CR=0.25, PL=21.53, Rew=6.18, Cost=2.89]Unicycle_naive_scratch:   1%|          | 53/5208 [02:51<4:39:47,  3.26s/it, SR=0.09, CR=0.25, PL=21.53, Rew=6.18, Cost=2.89]Unicycle_naive_scratch:   1%|          | 53/5208 [02:54<4:39:47,  3.26s/it, SR=0.09, CR=0.25, PL=21.33, Rew=6.35, Cost=2.84]Unicycle_naive_scratch:   1%|          | 54/5208 [02:54<4:40:58,  3.27s/it, SR=0.09, CR=0.25, PL=21.33, Rew=6.35, Cost=2.84]Unicycle_naive_scratch:   1%|          | 54/5208 [02:58<4:40:58,  3.27s/it, SR=0.10, CR=0.25, PL=21.25, Rew=6.64, Cost=2.82]Unicycle_naive_scratch:   1%|          | 55/5208 [02:58<4:41:01,  3.27s/it, SR=0.10, CR=0.25, PL=21.25, Rew=6.64, Cost=2.82]Unicycle_naive_scratch:   1%|          | 55/5208 [03:01<4:41:01,  3.27s/it, SR=0.10, CR=0.24, PL=21.18, Rew=7.28, Cost=2.79]Unicycle_naive_scratch:   1%|          | 56/5208 [03:01<4:45:27,  3.32s/it, SR=0.10, CR=0.24, PL=21.18, Rew=7.28, Cost=2.79]Unicycle_naive_scratch:   1%|          | 56/5208 [03:04<4:45:27,  3.32s/it, SR=0.10, CR=0.24, PL=21.09, Rew=7.50, Cost=2.80]Unicycle_naive_scratch:   1%|          | 57/5208 [03:04<4:43:41,  3.30s/it, SR=0.10, CR=0.24, PL=21.09, Rew=7.50, Cost=2.80]Unicycle_naive_scratch:   1%|          | 57/5208 [03:08<4:43:41,  3.30s/it, SR=0.10, CR=0.23, PL=21.27, Rew=7.74, Cost=2.80]Unicycle_naive_scratch:   1%|          | 58/5208 [03:08<4:42:16,  3.29s/it, SR=0.10, CR=0.23, PL=21.27, Rew=7.74, Cost=2.80]Unicycle_naive_scratch:   1%|          | 58/5208 [03:11<4:42:16,  3.29s/it, SR=0.10, CR=0.23, PL=21.26, Rew=7.85, Cost=2.76]Unicycle_naive_scratch:   1%|          | 59/5208 [03:11<4:40:25,  3.27s/it, SR=0.10, CR=0.23, PL=21.26, Rew=7.85, Cost=2.76]Unicycle_naive_scratch:   1%|          | 59/5208 [03:14<4:40:25,  3.27s/it, SR=0.12, CR=0.22, PL=21.20, Rew=8.44, Cost=2.70]Unicycle_naive_scratch:   1%|          | 60/5208 [03:14<4:42:50,  3.30s/it, SR=0.12, CR=0.22, PL=21.20, Rew=8.44, Cost=2.70]Unicycle_naive_scratch:   1%|          | 60/5208 [03:17<4:42:50,  3.30s/it, SR=0.12, CR=0.22, PL=21.26, Rew=8.49, Cost=2.64]                                                                                                                            Updates 60, num timesteps 234240, FPS 1183 
+Total Sim Time: 125.52s, Total Train Time: 72.03s
+Last 500 training episodes: mean/median reward 8.5/11.2, mean/median cost 2.6/2.2, min/max reward -23.4/38.5
+
+Unicycle_naive_scratch:   1%|          | 60/5208 [03:17<4:42:50,  3.30s/it, SR=0.12, CR=0.22, PL=21.26, Rew=8.49, Cost=2.64]                                                                                                                            Collision rate: 0.22, Success rate: 0.12, Path length: 21.26
+Unicycle_naive_scratch:   1%|          | 60/5208 [03:17<4:42:50,  3.30s/it, SR=0.12, CR=0.22, PL=21.26, Rew=8.49, Cost=2.64]Unicycle_naive_scratch:   1%|          | 61/5208 [03:17<4:37:28,  3.23s/it, SR=0.12, CR=0.22, PL=21.26, Rew=8.49, Cost=2.64]Unicycle_naive_scratch:   1%|          | 61/5208 [03:21<4:37:28,  3.23s/it, SR=0.12, CR=0.22, PL=21.12, Rew=8.54, Cost=2.61]Unicycle_naive_scratch:   1%|          | 62/5208 [03:21<4:40:06,  3.27s/it, SR=0.12, CR=0.22, PL=21.12, Rew=8.54, Cost=2.61]Unicycle_naive_scratch:   1%|          | 62/5208 [03:24<4:40:06,  3.27s/it, SR=0.12, CR=0.21, PL=21.27, Rew=9.14, Cost=2.54]Unicycle_naive_scratch:   1%|          | 63/5208 [03:24<4:36:40,  3.23s/it, SR=0.12, CR=0.21, PL=21.27, Rew=9.14, Cost=2.54]Unicycle_naive_scratch:   1%|          | 63/5208 [03:27<4:36:40,  3.23s/it, SR=0.13, CR=0.20, PL=21.23, Rew=9.57, Cost=2.54]Unicycle_naive_scratch:   1%|          | 64/5208 [03:27<4:34:08,  3.20s/it, SR=0.13, CR=0.20, PL=21.23, Rew=9.57, Cost=2.54]Unicycle_naive_scratch:   1%|          | 64/5208 [03:30<4:34:08,  3.20s/it, SR=0.14, CR=0.20, PL=21.18, Rew=9.88, Cost=2.48]Unicycle_naive_scratch:   1%|          | 65/5208 [03:30<4:33:11,  3.19s/it, SR=0.14, CR=0.20, PL=21.18, Rew=9.88, Cost=2.48]Unicycle_naive_scratch:   1%|          | 65/5208 [03:34<4:33:11,  3.19s/it, SR=0.14, CR=0.20, PL=21.24, Rew=10.03, Cost=2.43]Unicycle_naive_scratch:   1%|▏         | 66/5208 [03:34<4:54:35,  3.44s/it, SR=0.14, CR=0.20, PL=21.24, Rew=10.03, Cost=2.43]Unicycle_naive_scratch:   1%|▏         | 66/5208 [03:38<4:54:35,  3.44s/it, SR=0.14, CR=0.20, PL=21.06, Rew=10.21, Cost=2.35]Unicycle_naive_scratch:   1%|▏         | 67/5208 [03:38<5:09:26,  3.61s/it, SR=0.14, CR=0.20, PL=21.06, Rew=10.21, Cost=2.35]Unicycle_naive_scratch:   1%|▏         | 67/5208 [03:42<5:09:26,  3.61s/it, SR=0.14, CR=0.19, PL=21.23, Rew=10.47, Cost=2.31]Unicycle_naive_scratch:   1%|▏         | 68/5208 [03:42<5:24:51,  3.79s/it, SR=0.14, CR=0.19, PL=21.23, Rew=10.47, Cost=2.31]Unicycle_naive_scratch:   1%|▏         | 68/5208 [03:47<5:24:51,  3.79s/it, SR=0.16, CR=0.19, PL=21.19, Rew=10.87, Cost=2.30]Unicycle_naive_scratch:   1%|▏         | 69/5208 [03:47<5:48:27,  4.07s/it, SR=0.16, CR=0.19, PL=21.19, Rew=10.87, Cost=2.30]

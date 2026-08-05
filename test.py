@@ -50,6 +50,7 @@ def main():
     parser.add_argument('--exp_id', type=str, default=None)
     parser.add_argument('--robot_visible', type=str, default=None, help='Override robot visibility: True or False')
     parser.add_argument('--human_num', type=int, default=None, help='Override number of humans')
+    parser.add_argument('--robot_v_pref', type=float, default=None, help='Override robot preferred speed (env_config.robot.v_pref).')
     parser.add_argument('--test_size', type=int, default=250, help='Number of episodes to test')
     parser.add_argument('--adaptive_lora_scenario', type=str, choices=['seperate_ignorant_to_aware_step25', 'seperate_mixed_5050', 'seperate_all_ignorant', 'seperate_all_aware', 'cluster_aware_ignorant', 'none'], default='none',
                         help='Proof of concept scenarios: seperate_ignorant_to_aware_step25 (switch at step 25), seperate_mixed_5050 (mixed), seperate_all_ignorant, seperate_all_aware, or cluster_aware_ignorant (two spatial clusters: one aware, one ignorant)')
@@ -117,6 +118,9 @@ def main():
     if test_args.human_num is not None:
         env_config.sim.human_num = test_args.human_num
         logging.info(f"Overriding sim.human_num to {env_config.sim.human_num}")
+    if test_args.robot_v_pref is not None:
+        env_config.robot.v_pref = test_args.robot_v_pref
+        logging.info(f"Overriding robot.v_pref to {env_config.robot.v_pref}")
 
     env_config.aci_related.noise_clip_for_conformity_scores = 0.0
     env_config.aci_related.noise_std_for_conformity_scores = 0.0

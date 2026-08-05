@@ -28,7 +28,9 @@ is always saved to the canonical predictor path.
 """
 
 import argparse
+import json
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -57,6 +59,16 @@ _ap.add_argument('--test_size', type=int,
                  default=int(os.environ.get('DAGGER_TEST_SIZE', 200)))
 _ap.add_argument('--epochs_per_iter', type=int,
                  default=int(os.environ.get('DAGGER_EPOCHS_PER_ITER', 30)))
+# Per-iteration seeds. Default mode = one fresh random seed per iteration
+# (picked via SystemRandom, so different every invocation). For
+# reproducibility, override with --seeds "S1 S2 S3" (must have exactly
+# DAGGER_ITERATIONS entries).
+_ap.add_argument('--seeds', type=str,
+                 default=os.environ.get('DAGGER_SEEDS', ''),
+                 help='Space-separated seeds, one per iteration. Empty = random.')
+_ap.add_argument('--skip_bootstrap', action='store_true',
+                 default=os.environ.get('DAGGER_SKIP_BOOTSTRAP', '0') == '1',
+                 help='Skip the auto-train-on-exp42 step. Use the existing canonical predictor as-is.')
 _args, _ = _ap.parse_known_args()
 
 ROLLOUT_BEHAVIOUR = _args.rollout_behaviour
@@ -82,23 +94,20 @@ SCENARIOS = {
 }
 
 # Original adaptive_gt files per scenario (always included as anchors).
+# 5-seed adaptive_gt anchor set per scenario. Pulled at iter retraining time
+# so the on-policy DAgger dumps don't drown out off-policy ground truth.
+# Override via env var if you need a subset:
+#   ANCHOR_SEEDS="42 1000" python dagger_loop.py
+_ANCHOR_SEEDS = [s.strip() for s in os.environ.get('ANCHOR_SEEDS', '42 1000 2000 3000 4000').split() if s.strip()]
+_SC_TO_INTERNAL = {
+    "mixed_5050":    "seperate_mixed_5050",
+    "all_aware":     "seperate_all_aware",
+    "all_ignorant":  "seperate_all_ignorant",
+    "cluster":       "cluster_aware_ignorant",
+}
 ANCHOR_FILES = {
-    "mixed_5050": [
-        "seperate_mixed_5050_adaptive_gt.json",
-        "seperate_mixed_5050_adaptive_gt_exp1.json",
-    ],
-    "all_aware": [
-        "seperate_all_aware_adaptive_gt.json",
-        "seperate_all_aware_adaptive_gt_exp1.json",
-    ],
-    "all_ignorant": [
-        "seperate_all_ignorant_adaptive_gt.json",
-        "seperate_all_ignorant_adaptive_gt_exp1.json",
-    ],
-    "cluster": [
-        "cluster_aware_ignorant_adaptive_gt.json",
-        "cluster_aware_ignorant_adaptive_gt_exp1.json",
-    ],
+    short: [f"{internal}_adaptive_gt_exp{s}.json" for s in _ANCHOR_SEEDS]
+    for short, internal in _SC_TO_INTERNAL.items()
 }
 
 # Sampling weights — Mixed (and Cluster when enabled) dominate so the
@@ -115,34 +124,55 @@ DAGGER_ITERATIONS = _args.iterations
 TEST_SIZE = _args.test_size
 EPOCHS_PER_ITER = _args.epochs_per_iter
 
+# Resolve per-iteration seeds. Each iteration gets ONE seed (used for all
+# scenarios in that iter). Length must match DAGGER_ITERATIONS.
+_explicit_seeds = [s.strip() for s in _args.seeds.split() if s.strip()]
+if _explicit_seeds:
+    if len(_explicit_seeds) != DAGGER_ITERATIONS:
+        sys.exit(
+            f"--seeds has {len(_explicit_seeds)} entries but --iterations is "
+            f"{DAGGER_ITERATIONS}. They must match."
+        )
+    SEEDS_PER_ITER = _explicit_seeds
+    _seed_source = "explicit (--seeds)"
+else:
+    # Fresh random seed per iteration. SystemRandom = OS entropy, never collides
+    # with previously-archived dumps.
+    _rng = random.SystemRandom()
+    SEEDS_PER_ITER = [str(_rng.randint(1, 1_000_000)) for _ in range(DAGGER_ITERATIONS)]
+    _seed_source = "random (SystemRandom)"
+
+print(f"[dagger_loop] seeds per iteration ({_seed_source}): {SEEDS_PER_ITER}")
+
 # --------------------------------------------------------------------------
 
 
-def _scenario_dump_path(scenario_internal: str, iter_idx: int) -> str:
+def _scenario_dump_path(scenario_internal: str, iter_idx: int, seed: str) -> str:
     """File rl/evaluation.py will write for the rollout + this exp_id.
-    Encodes TAG so multiple DAgger sweeps' dumps don't collide."""
-    exp_id_suffix = f"dagger_{TAG}_iter{iter_idx}"
+    Encodes TAG + seed so concurrent sweeps and per-seed dumps don't collide."""
+    exp_id_suffix = f"dagger_{TAG}_iter{iter_idx}_seed{seed}"
     return os.path.join(
         TEST_DIR, f"{scenario_internal}_{ROLLOUT_BEHAVIOUR}_exp{exp_id_suffix}.json"
     )
 
 
-def _run_test_dump(scenario_internal: str, iter_idx: int) -> str:
-    """Run the configured rollout behaviour for one scenario; return dump path."""
-    expected_path = _scenario_dump_path(scenario_internal, iter_idx)
+def _run_test_dump(scenario_internal: str, iter_idx: int, seed: str) -> str:
+    """Run the configured rollout behaviour for one (scenario, seed); return dump path."""
+    expected_path = _scenario_dump_path(scenario_internal, iter_idx, seed)
     cmd = [
         "python3", "test.py",
         "--model_dir", MODEL_DIR,
         "--test_model", CHECKPOINT,
         "--adaptive_lora_scenario", scenario_internal,
         "--lora_behaviour", ROLLOUT_BEHAVIOUR,
-        "--exp_id", f"dagger_{TAG}_iter{iter_idx}",
+        "--exp_id", f"dagger_{TAG}_iter{iter_idx}_seed{seed}",
         "--predictor_tag", TAG,
         "--human_num", str(HUMAN_NUM),
         "--test_size", str(TEST_SIZE),
         "--awareness_eval", "always",
+        "--seed", str(seed),
     ]
-    print(f"\n>>> [dagger iter {iter_idx} / TAG={TAG}] {scenario_internal}")
+    print(f"\n>>> [dagger iter {iter_idx} / TAG={TAG} / seed={seed}] {scenario_internal}")
     print("    " + " ".join(cmd))
     subprocess.run(cmd, check=True)
     if not os.path.exists(expected_path):
@@ -153,24 +183,72 @@ def _run_test_dump(scenario_internal: str, iter_idx: int) -> str:
     return expected_path
 
 
-def main():
-    # Seed the tagged checkpoint from the canonical one on first run, so
-    # iter 1's rollout has weights to load. After that, the tagged file is
-    # self-perpetuating.
-    if not os.path.exists(PREDICTOR_PATH):
-        if not os.path.exists(CANONICAL_PREDICTOR_PATH):
+def _bootstrap_from_anchors():
+    """Auto-train the initial predictor on the configured anchor seed set
+    (default: exp42, exp1000, exp2000, exp3000, exp4000) for each scenario.
+
+    Writes both the tagged predictor (used by this DAgger run) AND the
+    canonical predictor (so future test.py invocations pick it up too).
+    Skipped if --skip_bootstrap is set.
+    """
+    initial_spec = {}
+    for sc_short, sc_internal in SCENARIOS.items():
+        paths = []
+        for s in _ANCHOR_SEEDS:
+            p = os.path.join(TEST_DIR, f"{sc_internal}_adaptive_gt_exp{s}.json")
+            if os.path.exists(p):
+                paths.append(p)
+            else:
+                print(f"  WARN: missing anchor seed {s} for '{sc_short}': {p}")
+        if not paths:
             sys.exit(
-                f"No starting predictor at {PREDICTOR_PATH} and no canonical "
-                f"{CANONICAL_PREDICTOR_PATH} to seed from. Run a normal "
-                f"`python train_alpha_predictor.py` first to bootstrap."
+                f"Bootstrap aborted: no anchor files found for '{sc_short}' "
+                f"in seed set {_ANCHOR_SEEDS}.\n"
+                f"Generate them by running test.py with --lora_behaviour adaptive_gt "
+                f"--seed <s> on the four scenarios, or pass --skip_bootstrap if you "
+                f"already have a usable canonical predictor."
             )
-        print(f"Seeding tagged predictor from canonical:\n  {CANONICAL_PREDICTOR_PATH}\n  → {PREDICTOR_PATH}")
-        shutil.copy(CANONICAL_PREDICTOR_PATH, PREDICTOR_PATH)
-        # Also seed the metrics sidecar if the canonical one exists, so the
-        # loader can reconstruct the architecture for iter 1's rollout.
-        canonical_metrics = os.path.join(MODEL_DIR, "friendly_predictor_metrics.json")
-        if os.path.exists(canonical_metrics) and not os.path.exists(METRICS_PATH):
-            shutil.copy(canonical_metrics, METRICS_PATH)
+        initial_spec[sc_short] = paths
+
+    canonical_metrics = os.path.join(MODEL_DIR, "friendly_predictor_metrics.json")
+    print(f"\n{'=' * 70}\n== Bootstrap: training initial predictor on exp42 adaptive_gt dumps ==\n{'=' * 70}")
+    for sc_short, files in initial_spec.items():
+        print(f"  [{sc_short}] {[os.path.basename(p) for p in files]}")
+    print(f"  → output_path : {PREDICTOR_PATH}")
+    print(f"  → metrics_path: {METRICS_PATH}")
+    train_from_jsons(
+        scenarios_spec=initial_spec,
+        weights_spec=SCENARIO_WEIGHTS,
+        output_path=PREDICTOR_PATH,
+        metrics_path=METRICS_PATH,
+        epochs=EPOCHS_PER_ITER,
+        init_checkpoint=None,  # fresh train, no warm-start
+    )
+    # Mirror to canonical paths so downstream scripts (test.py / test_adaptive_lora_poc.sh)
+    # pick up the same predictor without needing --predictor_tag.
+    shutil.copy(PREDICTOR_PATH, CANONICAL_PREDICTOR_PATH)
+    shutil.copy(METRICS_PATH, canonical_metrics)
+    print(f"\nBootstrap complete. Predictor at:\n  {PREDICTOR_PATH}\n  {CANONICAL_PREDICTOR_PATH}")
+
+
+def main():
+    if not _args.skip_bootstrap:
+        _bootstrap_from_anchors()
+    else:
+        # User wants to reuse an existing predictor. Mirror the original
+        # safety: tagged checkpoint seeded from canonical if missing.
+        if not os.path.exists(PREDICTOR_PATH):
+            if not os.path.exists(CANONICAL_PREDICTOR_PATH):
+                sys.exit(
+                    f"--skip_bootstrap set but neither {PREDICTOR_PATH} nor "
+                    f"{CANONICAL_PREDICTOR_PATH} exists. Remove --skip_bootstrap "
+                    f"to auto-train, or run train_alpha_predictor.py manually."
+                )
+            print(f"Seeding tagged predictor from canonical:\n  {CANONICAL_PREDICTOR_PATH}\n  → {PREDICTOR_PATH}")
+            shutil.copy(CANONICAL_PREDICTOR_PATH, PREDICTOR_PATH)
+            canonical_metrics = os.path.join(MODEL_DIR, "friendly_predictor_metrics.json")
+            if os.path.exists(canonical_metrics) and not os.path.exists(METRICS_PATH):
+                shutil.copy(canonical_metrics, METRICS_PATH)
 
     # Archive the iter-0 (pre-DAgger) starting checkpoint for this tag.
     start_archive = os.path.join(MODEL_DIR, f"friendly_predictor_{TAG}_iter0_start.pth")
@@ -180,13 +258,27 @@ def main():
 
     accumulated_pred_dumps = {sc: [] for sc in SCENARIOS}
 
-    for it in range(1, DAGGER_ITERATIONS + 1):
-        print(f"\n{'=' * 70}\n== DAgger iteration {it}/{DAGGER_ITERATIONS}  TAG={TAG}  "
+    # Sidecar log so the random seeds are recoverable for paper / reproduction.
+    seed_log_path = os.path.join(MODEL_DIR, f"friendly_predictor_{TAG}_seeds.json")
+    with open(seed_log_path, 'w') as f:
+        json.dump({
+            'tag': TAG,
+            'iterations': DAGGER_ITERATIONS,
+            'seeds_per_iter': SEEDS_PER_ITER,
+            'seed_source': _seed_source,
+            'created': datetime.now().isoformat(timespec='seconds'),
+        }, f, indent=2)
+    print(f"Per-iter seeds logged to {seed_log_path}")
+
+    for it, seed_for_iter in enumerate(SEEDS_PER_ITER, start=1):
+        print(f"\n{'=' * 70}\n== DAgger iteration {it}/{DAGGER_ITERATIONS}  TAG={TAG}  seed={seed_for_iter}  "
               f"[{datetime.now():%Y-%m-%d %H:%M:%S}] ==\n{'=' * 70}")
 
         # 1. Roll out the configured behaviour with the current tagged predictor.
+        #    All scenarios in this iter share the same per-iter seed; across
+        #    iterations the seed changes (random by default).
         for sc_short, sc_internal in SCENARIOS.items():
-            dump_path = _run_test_dump(sc_internal, iter_idx=it)
+            dump_path = _run_test_dump(sc_internal, iter_idx=it, seed=seed_for_iter)
             accumulated_pred_dumps[sc_short].append(dump_path)
 
         # 2. Build the training spec: anchors + accumulated dumps so far.

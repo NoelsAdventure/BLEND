@@ -41,17 +41,17 @@ class Config(object):
     env.val_size = 100
     env.test_size = 500
     # note = f"LoraF_invi_visi"
-    note = "Fulltune_uni_invi"
+    note = "Lora_seed_300000"
     # whether robot is visible to humans (whether humans respond to the robot's motion)
-    robot.visible = False # tag: 05/02/2024
+    robot.visible = True # tag: 05/02/2024
     # LoRA config
-    lora.rank = 1
+    lora.rank = 4
     lora.alpha = 128
-    lora.use_lora = False
+    lora.use_lora = True
     # action space of the robot
     action_space = BaseConfig()
     # holonomic or unicycle
-    action_space.kinematics = "unicycle"
+    action_space.kinematics = "holonomic"
     #################### unfrequently tuned ######################## 
     aggressiveness_factor = 0.0 # unused for now
     reward.intrusion_start_dist = 0.50 # unused

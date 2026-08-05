@@ -22,12 +22,16 @@
 set -u  # no unbound vars; do NOT use -e so one failed combo doesn't abort the rest
 
 # --- Config ---------------------------------------------------------------
-TEST_SIZE="${TEST_SIZE:-500}"
+TEST_SIZE="${TEST_SIZE:-250}"
 HUMAN_NUM="${HUMAN_NUM:-20}"
 SCENARIOS="${SCENARIOS:-seperate_mixed_5050 seperate_all_aware seperate_all_ignorant cluster_aware_ignorant}"
+# Test seeds — passed to test.py via --seed. Each value = a distinct simulator
+# rollout. Without this loop, runs are bit-identical regardless of --exp_id.
+# Override per-run:  SEEDS="42 1000" ./test_baselines.sh
+SEEDS="${SEEDS:-4000}"
 # Max parallel test.py processes. 4090 has 24 GB → ~4 neural processes fit
 # comfortably (~5 GB each). Override per-run: MAX_PARALLEL=8 ./test_baselines.sh
-MAX_PARALLEL="${MAX_PARALLEL:-4}"
+MAX_PARALLEL="${MAX_PARALLEL:-12}"
 # Exp ID suffix — passed to test.py as --exp_id, which appends "_exp<EXP_ID>"
 # to every output filename (per-episode JSON, all_evaluations.json key, log).
 # Use to keep multiple runs side-by-side without overwriting:
@@ -51,10 +55,10 @@ SCRIPT_PASSTHRU_ARGS=("${_remaining_args[@]}")
 # Each entry: "NAME|MODEL_DIR|CHECKPOINT". Pipe-separated so the names can
 # contain spaces; only the array splitting is whitespace-sensitive.
 BASELINES=(
-    # "SF|trained_models/SF|05207.pt"
-    # "ORCA|trained_models/ORCA|05207.pt"
+    "SF|trained_models/SF|05207.pt"
+    "ORCA|trained_models/ORCA|05207.pt"
     "CrowdNav++|trained_models/GST_predictor_rand|05207.pt"
-    "GenSafeNav-naive|trained_models/Fulltune_random_visi_seed_42|01200.pt"
+    "GenSafeNav-naive|trained_models/FullFineTune_invi_visi|03400.pt"
 )
 
 LOG_DIR="${LOG_DIR:-/tmp/baselines}"
@@ -66,6 +70,7 @@ echo "Baseline test sweep starting"
 echo "  HUMAN_NUM     : $HUMAN_NUM"
 echo "  TEST_SIZE     : $TEST_SIZE"
 echo "  SCENARIOS     : $SCENARIOS"
+echo "  SEEDS         : $SEEDS"
 echo "  baselines     : ${#BASELINES[@]}"
 echo "  MAX_PARALLEL  : $MAX_PARALLEL"
 [ -n "$EXP_ID" ] && echo "  EXP_ID        : $EXP_ID  → output filenames suffixed '_exp${EXP_ID}'"
@@ -80,13 +85,16 @@ mkdir -p "$LOG_DIR/.counters"
 
 # Launch one combo as a background job.
 launch_combo() {
-    local name="$1" model_dir="$2" ckpt="$3" sc="$4"
-    local tag_suffix=""
-    [ -n "$EXP_ID" ] && tag_suffix="_exp${EXP_ID}"
-    local log_path="$LOG_DIR/${name//[^A-Za-z0-9]/_}_${sc}${tag_suffix}.log"
-    local EXTRA_ARGS=()
-    [ -n "$EXP_ID" ] && EXTRA_ARGS+=(--exp_id "$EXP_ID")
-    echo "[$(date '+%H:%M:%S')] START  $name  ×  $sc   (log: $log_path)"
+    local name="$1" model_dir="$2" ckpt="$3" sc="$4" seed="$5"
+    # exp_id always encodes the seed; optionally prefixed by EXP_ID for run tagging.
+    local exp_id
+    if [ -n "$EXP_ID" ]; then
+        exp_id="${EXP_ID}_${seed}"
+    else
+        exp_id="$seed"
+    fi
+    local log_path="$LOG_DIR/${name//[^A-Za-z0-9]/_}_${sc}_exp${exp_id}.log"
+    echo "[$(date '+%H:%M:%S')] START  $name  ×  $sc  × seed=$seed   (log: $log_path)"
     if python3 -u test.py \
             --model_dir "$model_dir" \
             --test_model "$ckpt" \
@@ -95,14 +103,15 @@ launch_combo() {
             --human_num "$HUMAN_NUM" \
             --test_size "$TEST_SIZE" \
             --awareness_eval off \
-            "${EXTRA_ARGS[@]}" \
+            --seed "$seed" \
+            --exp_id "$exp_id" \
             "${SCRIPT_PASSTHRU_ARGS[@]}" \
             > "$log_path" 2>&1; then
         echo x >> "$LOG_DIR/.counters/ok"
-        echo "[$(date '+%H:%M:%S')] OK     $name  ×  $sc"
+        echo "[$(date '+%H:%M:%S')] OK     $name  ×  $sc  × seed=$seed"
     else
         echo x >> "$LOG_DIR/.counters/fail"
-        echo "[$(date '+%H:%M:%S')] FAIL   $name  ×  $sc   (see $log_path)"
+        echo "[$(date '+%H:%M:%S')] FAIL   $name  ×  $sc  × seed=$seed   (see $log_path)"
     fi
 }
 
@@ -125,12 +134,14 @@ for entry in "${BASELINES[@]}"; do
     fi
 
     for sc in $SCENARIOS; do
-        launch_combo "$name" "$model_dir" "$ckpt" "$sc" &
-        running=$((running + 1))
-        if (( running >= MAX_PARALLEL )); then
-            wait -n          # block until ANY background job finishes
-            running=$((running - 1))
-        fi
+        for SEED in $SEEDS; do
+            launch_combo "$name" "$model_dir" "$ckpt" "$sc" "$SEED" &
+            running=$((running + 1))
+            if (( running >= MAX_PARALLEL )); then
+                wait -n          # block until ANY background job finishes
+                running=$((running - 1))
+            fi
+        done
     done
 done
 wait  # drain the rest
@@ -151,18 +162,13 @@ echo "  failed       : $n_fail"
 echo "  skipped      : $n_skip"
 echo "=========================================================="
 echo
-echo "Per-combo summaries (SR ± 95% Wilson CI, PL ± 1.96·SE):"
-EXP_SUFFIX=""
-[ -n "$EXP_ID" ] && EXP_SUFFIX="_exp${EXP_ID}"
+echo "Per-combo summaries (SR mean ± seed-SD across $(echo $SEEDS | wc -w) seeds, PL mean ± seed-SD):"
 python3 - <<EOF
 import json, os, math
+from statistics import mean, pstdev
 
-def wilson_half(p, n, z=1.96):
-    if n <= 0: return float('nan')
-    denom = 1.0 + z*z/n
-    return (z * math.sqrt(p*(1-p)/n + z*z/(4*n*n))) / denom
-
-exp_suffix = "$EXP_SUFFIX"
+exp_prefix = "${EXP_ID:+${EXP_ID}_}"   # optional EXP_ID prefix on exp_id labels
+seeds = "$SEEDS".split()
 # Read from each model_dir's all_evaluations.json — the small aggregate is
 # always updated every run, even when the heavy per-episode dump is disabled
 # for non-adaptive_gt behaviours.
@@ -170,7 +176,7 @@ for entry in [
     ("SF",                "trained_models/SF"),
     ("ORCA",              "trained_models/ORCA"),
     ("CrowdNav++",        "trained_models/GST_predictor_rand"),
-    ("GenSafeNav-naive",  "trained_models/Fulltune_random_visi_seed_42"),
+    ("GenSafeNav-naive",  "trained_models/FullFineTune_invi_visi"),
 ]:
     name, mdir = entry
     aggregate_path = os.path.join(mdir, "test", "all_evaluations.json")
@@ -184,26 +190,27 @@ for entry in [
         continue
     rows = []
     for sc in "$SCENARIOS".split():
-        key = "{}_always_off{}".format(sc, exp_suffix)
-        ent = aggregate.get(key)
-        if ent is None:
+        srs, crs, pls, ns = [], [], [], []
+        for s_ in seeds:
+            key = "{}_always_off_exp{}{}".format(sc, exp_prefix, s_)
+            ent = aggregate.get(key)
+            if ent is None:
+                continue
+            s = ent.get("summary", {})
+            srs.append(s.get("success_rate"))
+            crs.append(s.get("collision_rate"))
+            pls.append(s.get("avg_path_length"))
+            ns.append(s.get("num_episodes", 0) or 0)
+        if not srs:
             continue
-        s = ent.get("summary", {})
-        n  = s.get("num_episodes", 0) or 0
-        sr = s.get("success_rate"); cr = s.get("collision_rate")
-        pl = s.get("avg_path_length"); pl_std = s.get("std_path_length")
-        sr_ci = wilson_half(sr, n) if sr is not None else float('nan')
-        rows.append((sc, sr, sr_ci, cr, pl, pl_std, n))
+        sr_mu = mean(srs); sr_sd = pstdev(srs) if len(srs) > 1 else 0.0
+        cr_mu = mean(crs); pl_mu = mean(pls); pl_sd = pstdev(pls) if len(pls) > 1 else 0.0
+        rows.append((sc, sr_mu, sr_sd, cr_mu, pl_mu, pl_sd, sum(ns)))
     if rows:
         print("\n  {}  ({})".format(name, mdir))
-        for sc, sr, sr_ci, cr, pl, pl_std, n in rows:
-            sr_str = "{:.3f} ± {:.3f}".format(sr, sr_ci) if isinstance(sr, (int, float)) else str(sr)
-            cr_str = "{:.3f}".format(cr) if isinstance(cr, (int, float)) else str(cr)
-            if pl_std is not None and n > 1:
-                pl_str = "{:.2f} ± {:.2f}".format(pl, 1.96 * float(pl_std) / math.sqrt(n))
-            elif isinstance(pl, (int, float)):
-                pl_str = "{:.2f} ± N/A".format(pl)
-            else:
-                pl_str = str(pl)
-            print("    {:<32s} SR={:>13s}  CR={}  PL={}  N={}".format(sc, sr_str, cr_str, pl_str, n))
+        for sc, sr_mu, sr_sd, cr_mu, pl_mu, pl_sd, n_total in rows:
+            sr_str = "{:.3f} ± {:.3f}".format(sr_mu, sr_sd)
+            cr_str = "{:.3f}".format(cr_mu)
+            pl_str = "{:.2f} ± {:.2f}".format(pl_mu, pl_sd)
+            print("    {:<32s} SR={:>13s}  CR={}  PL={}  N_total={}".format(sc, sr_str, cr_str, pl_str, n_total))
 EOF

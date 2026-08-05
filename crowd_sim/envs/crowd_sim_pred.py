@@ -122,16 +122,8 @@ class CrowdSimPred(CrowdSimVarNum):
         else:
             action = self.robot.policy.clip_action(action, self.robot.v_pref)
 
-        if self.robot.kinematics == 'unicycle':
-            self.desiredVelocity[0] = np.clip(self.desiredVelocity[0] + action.v, -self.robot.v_pref, self.robot.v_pref)
-            action = ActionRot(self.desiredVelocity[0], action.r)
-
-            # if action.r is delta theta
-            action = ActionRot(self.desiredVelocity[0], action.r)
-            if self.record:
-                self.episodeRecoder.unsmoothed_actions.append(list(action))
-
-            action = self.smooth_action(action)
+        # naive kinematic unicycle: clip_action already returns absolute ActionRot(v, w),
+        # so it is applied directly (no desiredVelocity accumulation, no smooth_action).
 
 
 

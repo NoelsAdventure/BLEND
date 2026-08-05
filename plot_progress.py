@@ -4,10 +4,11 @@ import os
 import argparse
 import numpy as np
 
-def plot_progress(model_configs, window_size=10):
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 15), sharex=True)
-    
+def plot_progress(model_configs, window_size=10, cost_limit=None):
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 20), sharex=True)
+
     found_reward = False
+    found_cost = False
     found_success = False
     found_path = False
     
@@ -50,17 +51,30 @@ def plot_progress(model_configs, window_size=10):
             ax1.plot(x, y_smooth, label=model_name, color=color)
             found_reward = True
         
+        # Plot Cost (2nd panel)
+        cost_col = None
+        for col in ['epcostmean', 'cost', 'Mean Cost']:
+            if col in df.columns:
+                cost_col = col
+                break
+
+        if cost_col:
+            y = df[cost_col]
+            y_smooth = y.rolling(window=window_size, min_periods=1).mean()
+            ax2.plot(x, y_smooth, label=model_name, color=color)
+            found_cost = True
+
         # Plot Success Rate
         success_col = None
         for col in ['epsuccessmean', 'success_rate', 'Success Rate']:
             if col in df.columns:
                 success_col = col
                 break
-        
+
         if success_col:
             y = df[success_col]
             y_smooth = y.rolling(window=window_size, min_periods=1).mean()
-            ax2.plot(x, y_smooth, label=model_name, color=color)
+            ax3.plot(x, y_smooth, label=model_name, color=color)
             found_success = True
 
         # Plot Path Length
@@ -69,14 +83,14 @@ def plot_progress(model_configs, window_size=10):
             if col in df.columns:
                 path_col = col
                 break
-        
+
         if path_col:
             y = df[path_col]
             y_smooth = y.rolling(window=window_size, min_periods=1).mean()
-            ax3.plot(x, y_smooth, label=model_name, color=color)
+            ax4.plot(x, y_smooth, label=model_name, color=color)
             found_path = True
 
-    if not any([found_reward, found_success, found_path]):
+    if not any([found_reward, found_cost, found_success, found_path]):
         print("No valid data found to plot.")
         plt.close(fig)
         return
@@ -87,24 +101,36 @@ def plot_progress(model_configs, window_size=10):
         ax1.legend()
     ax1.grid(True)
 
-    ax2.set_ylabel('Mean Success Rate')
-    ax2.set_title('Learning Progress - Success Rate')
-    if found_success:
+    ax2.set_ylabel('Mean Episode Cost')
+    ax2.set_title('Learning Progress - Cost')
+    if cost_limit is not None:
+        ax2.axhline(y=cost_limit, color='red', linestyle='--', linewidth=1.2,
+                    label=f'cost_limit = {cost_limit}')
+    if found_cost or cost_limit is not None:
         ax2.legend()
-    else:
-        ax2.text(0.5, 0.5, 'Success rate data not available in older logs', 
+    if not found_cost:
+        ax2.text(0.5, 0.5, 'Cost data not available in older logs',
                  horizontalalignment='center', verticalalignment='center', transform=ax2.transAxes)
     ax2.grid(True)
 
-    ax3.set_ylabel('Mean Path Length')
-    ax3.set_xlabel('Total Timesteps')
-    ax3.set_title('Learning Progress - Path Length')
-    if found_path:
+    ax3.set_ylabel('Mean Success Rate')
+    ax3.set_title('Learning Progress - Success Rate')
+    if found_success:
         ax3.legend()
     else:
-        ax3.text(0.5, 0.5, 'Path length data not available in older logs', 
+        ax3.text(0.5, 0.5, 'Success rate data not available in older logs',
                  horizontalalignment='center', verticalalignment='center', transform=ax3.transAxes)
     ax3.grid(True)
+
+    ax4.set_ylabel('Mean Path Length')
+    ax4.set_xlabel('Total Timesteps')
+    ax4.set_title('Learning Progress - Path Length')
+    if found_path:
+        ax4.legend()
+    else:
+        ax4.text(0.5, 0.5, 'Path length data not available in older logs',
+                 horizontalalignment='center', verticalalignment='center', transform=ax4.transAxes)
+    ax4.grid(True)
 
     plt.tight_layout()
     output_plot = 'learning_progress.png'
@@ -115,6 +141,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot training progress from progress.csv')
     parser.add_argument('--dirs', nargs='+', help='List of model directories or path:label pairs')
     parser.add_argument('--window', type=int, default=10, help='Rolling window size for smoothing')
+    parser.add_argument('--cost_limit', type=float, default=0.4,
+                        help='Cost limit reference line on cost panel (set to negative to disable)')
     
     args = parser.parse_args()
     
@@ -139,10 +167,10 @@ if __name__ == "__main__":
 
 
     model_configs = [
-        {'path': 'trained_models/LoraE_visi_invi_alpha_1024', 'name': '1'},
-        {'path': 'trained_models/LoraE_invi_visi_alpha_128', 'name': '1'},
-        {'path': 'trained_models/LoraD_visi_invi_alpha_1024', 'name': '32'},
-        {'path': 'trained_models/Fulltune_random_visi_alpha_1024', 'name': '1024'},
+        {'path': 'trained_models/LoraZ_invi_visi_rank_4', 'name': 'LoRA_A'},
+        {'path': 'trained_models/LoraF_invi_visi_rank_1', 'name': 'LoRA_B'},
+        {'path': 'trained_models/LoraZ_invi_visi_rank_1', 'name': 'LoRA_C'},
+        {'path': 'trained_models/FullFineTune_invi_visi', 'name': 'FullFineTune'},
     ]
 
     if args.dirs:
@@ -164,7 +192,8 @@ if __name__ == "__main__":
                     model_configs.append({'path': full_path, 'name': d})
     
     if model_configs:
-        plot_progress(model_configs, args.window)
+        cl = args.cost_limit if args.cost_limit is not None and args.cost_limit >= 0 else None
+        plot_progress(model_configs, args.window, cost_limit=cl)
     else:
         print("No valid model directories with progress.csv found.")
 

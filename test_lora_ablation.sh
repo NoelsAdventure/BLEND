@@ -26,11 +26,11 @@
 set -u  # don't abort on first failed combo
 
 # --- Config ---------------------------------------------------------------
-TEST_SIZE="${TEST_SIZE:-500}"
+TEST_SIZE="${TEST_SIZE:-250}"
 HUMAN_NUM="${HUMAN_NUM:-20}"
 SCENARIOS="${SCENARIOS:-seperate_mixed_5050 seperate_all_aware seperate_all_ignorant cluster_aware_ignorant}"
 SCALES="${SCALES:-0.2 0.4 0.6 0.8 1.0}"
-MAX_PARALLEL="${MAX_PARALLEL:-4}"
+MAX_PARALLEL="${MAX_PARALLEL:-12}"
 SEED="${SEED:-42}"
 AWARENESS_EVAL="${AWARENESS_EVAL:-off}"  # static behaviour → predictor scoring is moot
 
@@ -40,7 +40,7 @@ AWARENESS_EVAL="${AWARENESS_EVAL:-off}"  # static behaviour → predictor scorin
 # whichever LoraF variants exist locally, and you're done.
 MODELS=(
     "LoraF rank=1|trained_models/LoraF_invi_visi_rank_1|03400.pt"
-    "LoraF rank=4|trained_models/LoraF_invi_visi_rank_4|03400.pt"
+    # "LoraF rank=4|trained_models/LoraF_invi_visi_rank_4|03400.pt"
     # "LoraE rank=1 alpha=128|trained_models/LoraE_visi_invi_rank1_alpha_128|03400.pt"
     # "LoraE alpha=128|trained_models/LoraE_invi_visi_alpha_128|03400.pt"
     # "LoraG rank=1|trained_models/LoraG_invi_visi_rank_1|03400.pt"

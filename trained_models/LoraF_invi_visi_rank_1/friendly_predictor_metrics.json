@@ -1,51 +1,51 @@
 {
-  "epoch": 25,
-  "min_scenario_acc": 0.8983499214248297,
-  "mean_scenario_acc": 0.9403467795806193,
+  "epoch": 30,
+  "min_scenario_acc": 0.9167061542061542,
+  "mean_scenario_acc": 0.9435894079588896,
   "per_scenario": {
     "mixed_5050": {
-      "acc": 0.9436932418162619,
-      "f1": 0.9432659390818388,
-      "prec": 0.946410175661466,
-      "rec": 0.940142525371425,
-      "tp": 177309,
-      "fp": 10040,
-      "tn": 180162,
-      "fn": 11289,
-      "size": 18940
+      "acc": 0.9167061542061542,
+      "f1": 0.9179526556296351,
+      "prec": 0.9044179431569146,
+      "rec": 0.9318986193986194,
+      "tp": 637195,
+      "fp": 67341,
+      "tn": 616419,
+      "fn": 46565,
+      "size": 68376
     },
     "all_aware": {
-      "acc": 0.8983499214248297,
-      "f1": 0.9464534554836572,
+      "acc": 0.9285013276876705,
+      "f1": 0.9629252667416834,
       "prec": 1.0,
-      "rec": 0.8983499214248297,
-      "tp": 274392,
+      "rec": 0.9285013276876705,
+      "tp": 1035019,
       "fp": 0,
       "tn": 0,
-      "fn": 31048,
-      "size": 15272
+      "fn": 79701,
+      "size": 55736
     },
     "all_ignorant": {
-      "acc": 0.9295271847177803,
+      "acc": 0.9298526530959884,
       "f1": 0.0,
       "prec": 0.0,
       "rec": 0.0,
       "tp": 0,
-      "fp": 32612,
-      "tn": 430148,
+      "fp": 115304,
+      "tn": 1528436,
       "fn": 0,
-      "size": 23138
+      "size": 82187
     },
     "cluster": {
-      "acc": 0.9898167703636053,
-      "f1": 0.9897286498125939,
-      "prec": 0.9901048836258287,
-      "rec": 0.9893527018238534,
-      "tp": 171903,
-      "fp": 1718,
-      "tn": 174909,
-      "fn": 1850,
-      "size": 17519
+      "acc": 0.9992974968457453,
+      "f1": 0.9992974618277207,
+      "prec": 0.9993472767889133,
+      "rec": 0.999247651832583,
+      "tp": 641507,
+      "fp": 419,
+      "tn": 641571,
+      "fn": 483,
+      "size": 64199
     }
   },
   "threshold": 0.5,
@@ -80,35 +80,35 @@
     "batch_size": 128,
     "val_frac": 0.2,
     "seed": 42,
-    "init_checkpoint": "trained_models/LoraF_invi_visi_rank_1/friendly_predictor.pth",
+    "init_checkpoint": null,
     "scenarios": {
       "mixed_5050": [
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_gt.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_gt_exp1.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_pred_expdagger1.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_pred_expdagger2.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_pred_expdagger3.json"
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_gt_exp42.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_gt_exp1000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_gt_exp2000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_gt_exp3000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_mixed_5050_adaptive_gt_exp4000.json"
       ],
       "all_aware": [
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_gt.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_gt_exp1.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_pred_expdagger1.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_pred_expdagger2.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_pred_expdagger3.json"
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_gt_exp42.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_gt_exp1000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_gt_exp2000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_gt_exp3000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_aware_adaptive_gt_exp4000.json"
       ],
       "all_ignorant": [
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_gt.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_gt_exp1.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_pred_expdagger1.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_pred_expdagger2.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_pred_expdagger3.json"
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_gt_exp42.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_gt_exp1000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_gt_exp2000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_gt_exp3000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/seperate_all_ignorant_adaptive_gt_exp4000.json"
       ],
       "cluster": [
-        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_gt.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_gt_exp1.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_pred_expdagger1.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_pred_expdagger2.json",
-        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_pred_expdagger3.json"
+        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_gt_exp42.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_gt_exp1000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_gt_exp2000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_gt_exp3000.json",
+        "trained_models/LoraF_invi_visi_rank_1/test/cluster_aware_ignorant_adaptive_gt_exp4000.json"
       ]
     },
     "weights": {
@@ -118,13 +118,13 @@
       "cluster": 4.0
     }
   },
-  "val_accuracy": 0.9403467795806193,
-  "val_f1": 0.7198620110945224,
-  "val_precision": 0.7341287648218237,
-  "val_recall": 0.706961287155027,
-  "val_tp": 623604,
-  "val_fp": 44370,
-  "val_tn": 785219,
-  "val_fn": 44187,
-  "val_size": 74869
+  "val_accuracy": 0.9435894079588896,
+  "val_f1": 0.7200438460497598,
+  "val_precision": 0.7259413049864569,
+  "val_recall": 0.7149118997297182,
+  "val_tp": 2313721,
+  "val_fp": 183064,
+  "val_tn": 2786426,
+  "val_fn": 126749,
+  "val_size": 270498
 }

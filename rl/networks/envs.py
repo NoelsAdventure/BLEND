@@ -63,9 +63,10 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets, config=None, envNu
 
         if ax:
             env.set_render_axis(ax)
-            if test_case >= 0:
-                env.set_test_case(test_case)
-        
+        # Route --test_case regardless of ax so test.py (ax=None) honors it too.
+        if test_case >= 0:
+            env.set_test_case(test_case)
+
         env.seed(seed + rank)
         env.set_nenv(envNum)
 

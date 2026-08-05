@@ -2,17 +2,18 @@
 
 # test have different policy -> distribution shift:
 # retrain on the new policy or use CP to capture those distribution shift uncertainty
-# 
 
 # Proof of Concept: Adaptive LoRA switching online
 # Compares the adaptive model against static baselines (always_on, always_off)
 
 ADAPTIVE_MODEL="trained_models/LoraF_invi_visi_rank_1"
+# ADAPTIVE_MODEL="trained_models/LoraF_invi_visi_rank_1"
 # ADAPTIVE_MODEL="trained_models/Fulltune_uni_invi"  # uncomment to target the
 # fulltune baseline (no friendly_predictor.pth lives there, so _pred behaviours
 # will FileNotFound).
 CHECKPOINT="03400.pt"
-TEST_SIZE=500
+# CHECKPOINT="03400.pt"
+TEST_SIZE="${TEST_SIZE:-250}"
 DISCREPANCY_THRESHOLD=0.15
 DISCREPANCY_M=1
 HUMAN_NUM=20
@@ -20,7 +21,7 @@ HUMAN_NUM=20
 # different episode sets — useful when hunting for an always_off collision or
 # any other specific failure case. Override per-run via env:
 #   SEED=123 ./test_adaptive_lora_poc.sh --visualize
-SEED="${SEED:-42}"
+SEED="${SEED:-3000}"
 # Shadow predictor scoring against ground truth:
 #   always    — every behaviour (default; lets adaptive_gt etc. report AwAcc)
 #   pred_only — only when behaviour is switching_pred / adaptive_pred
@@ -37,7 +38,7 @@ PREDICTOR_TAG=""
 # Max parallel test.py / visualize.py processes. ~5 GB per neural process;
 # default to 4 on a 24 GB GPU. Set to 1 to force sequential (useful with
 # --visualize which writes shared render output you don't want races over).
-MAX_PARALLEL="${MAX_PARALLEL:-4}"
+MAX_PARALLEL="${MAX_PARALLEL:-8}"
 # Exp ID suffix — passed to test.py as --exp_id, which appends "_exp<EXP_ID>"
 # to every output filename (per-episode JSON dump, all_evaluations.json key,
 # render dir). Use this to *avoid overwriting* previous results when re-running:
@@ -93,7 +94,7 @@ SCENARIOS=("seperate_all_aware" "seperate_all_ignorant" "seperate_mixed_5050" "c
 # and the dump's `actual_friendly` label is clean for every human (in-range or
 # not). Flip to ("switching_pred" "adaptive_pred") AFTER retraining if you want
 # to re-measure the predictor's deployment behaviour.
-BEHAVIOURS=("always_off" "adaptive_gt")
+BEHAVIOURS=("adaptive_discrepancy")
 # BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "adaptive_pred")
 # BEHAVIOURS=("switching_pred" "adaptive_pred")
 # BEHAVIOURS=("always_off")

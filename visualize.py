@@ -47,6 +47,12 @@ def main():
     parser.add_argument('--exp_id', type=str, default=None)
     parser.add_argument('--robot_visible', type=str, default=None, help='Override robot visibility: True or False')
     parser.add_argument('--human_num', type=int, default=None, help='Override number of humans')
+    parser.add_argument('--robot_v_pref', type=float, default=None, help='Override robot preferred speed (env_config.robot.v_pref).')
+    parser.add_argument('--render_only_cases', type=str, default=None,
+                        help='Comma-separated test_case indices to render PNGs/MP4 for. '
+                             'Other episodes still run (to keep case_counter / RNG advance '
+                             'aligned with test.py), but their frames are skipped. Use with '
+                             '--test_size = max(list)+1 and DO NOT also pass --test_case.')
     parser.add_argument('--test_size', type=int, default=1, help='Number of episodes to test')
     parser.add_argument('--adaptive_lora_scenario', type=str, choices=['seperate_ignorant_to_aware_step25', 'seperate_mixed_5050', 'seperate_all_ignorant', 'seperate_all_aware', 'cluster_aware_ignorant', 'none'], default='none')
     parser.add_argument('--awareness_eval', type=str,
@@ -95,6 +101,8 @@ def main():
         env_config.robot.visible = (test_args.robot_visible.lower() == 'true')
     if test_args.human_num is not None:
         env_config.sim.human_num = test_args.human_num
+    if test_args.robot_v_pref is not None:
+        env_config.robot.v_pref = test_args.robot_v_pref
 
     env_config.aci_related.noise_clip_for_conformity_scores = 0.0
     env_config.aci_related.noise_std_for_conformity_scores = 0.0
@@ -114,7 +122,15 @@ def main():
                         format='%(asctime)s, %(levelname)s: %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
 
     device = torch.device("cuda:0" if algo_args.cuda and torch.cuda.is_available() else "cpu")
-    
+
+    # Match test.py's RNG init so --test_case K reproduces test.py's ep K.
+    import numpy as _np
+    _seed = getattr(algo_args, 'seed', 42)
+    torch.manual_seed(_seed)
+    torch.cuda.manual_seed_all(_seed)
+    _np.random.seed(_seed)
+    torch.set_num_threads(1)
+
     # Visualization setup
     if test_args.visualize:
         fig, ax = plt.subplots(figsize=(7, 7))

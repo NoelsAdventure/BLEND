@@ -147,22 +147,10 @@ class Agent(object):
             py = self.py + action.vy * delta_t
         # unicycle
         else:
-            # naive dynamics
-            # theta = self.theta + action.r * delta_t # if action.r is w
-            # # theta = self.theta + action.r # if action.r is delta theta
-            # px = self.px + np.cos(theta) * action.v * delta_t
-            # py = self.py + np.sin(theta) * action.v * delta_t
-
-            # differential drive
-            epsilon = 0.0001
-            if abs(action.r) < epsilon:
-                R = 0
-            else:
-                w = action.r/delta_t # action.r is delta theta
-                R = action.v/w
-
-            px = self.px - R * np.sin(self.theta) + R * np.sin(self.theta + action.r)
-            py = self.py + R * np.cos(self.theta) - R * np.cos(self.theta + action.r)
+            # naive kinematic unicycle; action.r is yaw rate w (rad/s)
+            theta = self.theta + action.r * delta_t
+            px = self.px + np.cos(theta) * action.v * delta_t
+            py = self.py + np.sin(theta) * action.v * delta_t
 
 
         return px, py
@@ -178,7 +166,8 @@ class Agent(object):
             self.vx = action.vx
             self.vy = action.vy
         else:
-            self.theta = (self.theta + action.r) % (2 * np.pi)
+            # action.r is yaw rate w (rad/s); integrate over the timestep
+            self.theta = (self.theta + action.r * self.time_step) % (2 * np.pi)
             self.vx = action.v * np.cos(self.theta)
             self.vy = action.v * np.sin(self.theta)
 

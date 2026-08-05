@@ -1,0 +1,205 @@
+=== STARTING cluster_aware_ignorant at 15:31:39 ===
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+trained_models/LoraF_invi_visi_rank_1/checkpoints/03400.pt
+<Monitor<CrowdSimPredRealGST instance>>
+
+FriendlyPredictor val metrics @ epoch 91: acc=0.9650 f1=0.7369 prec=0.7429 rec=0.7314 (TP=2363447, FP=114864, TN=2854626, FN=77023, N=270498, thr=0.5)
+Evaluating:   0%|          | 0/5 [00:00<?, ?it/s]                                                 Cluster scenario: 10 ignorant (cluster A), 10 aware (cluster B)
+Evaluating:   0%|          | 0/5 [00:00<?, ?it/s]
+>>> Step 1: Ratio 0.00. Target Scale = 0.00
+
+>>> Step 16: Ratio 1.00. Target Scale = 1.00
+
+>>> Step 17: Ratio 0.00. Target Scale = 0.00
+
+>>> Step 25: Ratio 0.01. Target Scale = 0.01
+
+>>> Step 26: Ratio 0.47. Target Scale = 0.47
+
+>>> Step 27: Ratio 0.58. Target Scale = 0.58
+
+>>> Step 28: Ratio 0.57. Target Scale = 0.57
+
+>>> Step 31: Ratio 0.54. Target Scale = 0.54
+
+>>> Step 33: Ratio 0.56. Target Scale = 0.56
+
+>>> Step 34: Ratio 0.57. Target Scale = 0.57
+
+>>> Step 36: Ratio 0.59. Target Scale = 0.59
+
+>>> Step 37: Ratio 0.60. Target Scale = 0.60
+
+>>> Step 38: Ratio 0.62. Target Scale = 0.62
+
+>>> Step 41: Ratio 0.59. Target Scale = 0.59
+
+>>> Step 42: Ratio 0.56. Target Scale = 0.56
+
+>>> Step 43: Ratio 0.52. Target Scale = 0.52
+
+>>> Step 44: Ratio 0.47. Target Scale = 0.47
+
+>>> Step 45: Ratio 0.43. Target Scale = 0.43
+
+>>> Step 46: Ratio 0.39. Target Scale = 0.39
+
+>>> Step 47: Ratio 0.36. Target Scale = 0.36
+
+>>> Step 49: Ratio 0.34. Target Scale = 0.34
+
+>>> Step 53: Ratio 0.36. Target Scale = 0.36
+
+>>> Step 54: Ratio 0.37. Target Scale = 0.37
+
+>>> Step 55: Ratio 0.40. Target Scale = 0.40
+
+>>> Step 56: Ratio 0.43. Target Scale = 0.43
+
+>>> Step 61: Ratio 0.45. Target Scale = 0.45
+
+>>> Step 65: Ratio 0.47. Target Scale = 0.47
+
+>>> Step 67: Ratio 0.48. Target Scale = 0.48
+
+>>> Step 69: Ratio 0.49. Target Scale = 0.49
+
+>>> Step 72: Ratio 0.48. Target Scale = 0.48
+
+>>> Step 73: Ratio 0.44. Target Scale = 0.44
+
+>>> Step 74: Ratio 0.37. Target Scale = 0.37
+
+>>> Step 75: Ratio 0.44. Target Scale = 0.44
+
+>>> Step 76: Ratio 0.48. Target Scale = 0.48
+
+>>> Step 77: Ratio 0.50. Target Scale = 0.50
+
+>>> Step 79: Ratio 0.47. Target Scale = 0.47
+
+>>> Step 80: Ratio 0.44. Target Scale = 0.44
+Evaluating:   0%|          | 0/5 [00:02<?, ?it/s, SR=1.00, CR=0.00, Avg PL=27.66, Avg LoRA=0.34, AwAcc=1.00, AwF1=1.00]Evaluating:  20%|██        | 1/5 [00:02<00:09,  2.37s/it, SR=1.00, CR=0.00, Avg PL=27.66, Avg LoRA=0.34, AwAcc=1.00, AwF1=1.00]
+>>> Step 22: Ratio 0.73. Target Scale = 0.73
+
+>>> Step 23: Ratio 0.49. Target Scale = 0.49
+
+>>> Step 24: Ratio 0.34. Target Scale = 0.34
+
+>>> Step 25: Ratio 0.22. Target Scale = 0.22
+
+>>> Step 26: Ratio 0.13. Target Scale = 0.13
+
+>>> Step 27: Ratio 0.08. Target Scale = 0.08
+
+>>> Step 28: Ratio 0.04. Target Scale = 0.04
+
+>>> Step 29: Ratio 0.02. Target Scale = 0.02
+
+>>> Step 33: Ratio 0.01. Target Scale = 0.01
+Evaluating:  20%|██        | 1/5 [00:03<00:09,  2.37s/it, SR=1.00, CR=0.00, Avg PL=23.65, Avg LoRA=0.43, AwAcc=1.00, AwF1=1.00]Evaluating:  40%|████      | 2/5 [00:03<00:04,  1.58s/it, SR=1.00, CR=0.00, Avg PL=23.65, Avg LoRA=0.43, AwAcc=1.00, AwF1=1.00]
+>>> Step 5: Ratio 0.00. Target Scale = 0.00
+
+>>> Step 41: Ratio 0.08. Target Scale = 0.08
+
+>>> Step 42: Ratio 0.21. Target Scale = 0.21
+
+>>> Step 43: Ratio 0.34. Target Scale = 0.34
+
+>>> Step 44: Ratio 0.46. Target Scale = 0.46
+
+>>> Step 45: Ratio 0.59. Target Scale = 0.59
+
+>>> Step 46: Ratio 0.68. Target Scale = 0.68
+
+>>> Step 47: Ratio 0.77. Target Scale = 0.77
+
+>>> Step 48: Ratio 0.81. Target Scale = 0.81
+
+>>> Step 49: Ratio 0.83. Target Scale = 0.83
+Evaluating:  40%|████      | 2/5 [00:04<00:04,  1.58s/it, SR=1.00, CR=0.00, Avg PL=22.99, Avg LoRA=0.35, AwAcc=1.00, AwF1=1.00]Evaluating:  60%|██████    | 3/5 [00:04<00:02,  1.42s/it, SR=1.00, CR=0.00, Avg PL=22.99, Avg LoRA=0.35, AwAcc=1.00, AwF1=1.00]
+>>> Step 23: Ratio 0.98. Target Scale = 0.98
+
+>>> Step 24: Ratio 0.96. Target Scale = 0.96
+
+>>> Step 26: Ratio 0.95. Target Scale = 0.95
+
+>>> Step 30: Ratio 0.94. Target Scale = 0.94
+
+>>> Step 31: Ratio 0.90. Target Scale = 0.90
+
+>>> Step 32: Ratio 0.86. Target Scale = 0.86
+
+>>> Step 33: Ratio 0.81. Target Scale = 0.81
+
+>>> Step 34: Ratio 0.75. Target Scale = 0.75
+
+>>> Step 35: Ratio 0.70. Target Scale = 0.70
+
+>>> Step 36: Ratio 0.66. Target Scale = 0.66
+
+>>> Step 37: Ratio 0.65. Target Scale = 0.65
+
+>>> Step 38: Ratio 0.62. Target Scale = 0.62
+
+>>> Step 40: Ratio 0.58. Target Scale = 0.58
+
+>>> Step 41: Ratio 0.60. Target Scale = 0.60
+
+>>> Step 42: Ratio 0.57. Target Scale = 0.57
+
+>>> Step 44: Ratio 0.55. Target Scale = 0.55
+
+>>> Step 46: Ratio 0.54. Target Scale = 0.54
+
+>>> Step 47: Ratio 0.56. Target Scale = 0.56
+
+>>> Step 50: Ratio 0.58. Target Scale = 0.58
+
+>>> Step 52: Ratio 0.59. Target Scale = 0.59
+
+>>> Step 56: Ratio 0.60. Target Scale = 0.60
+
+>>> Step 59: Ratio 0.63. Target Scale = 0.63
+
+>>> Step 60: Ratio 0.64. Target Scale = 0.64
+
+>>> Step 61: Ratio 0.69. Target Scale = 0.69
+
+>>> Step 62: Ratio 0.71. Target Scale = 0.71
+
+>>> Step 63: Ratio 0.73. Target Scale = 0.73
+
+>>> Step 64: Ratio 0.74. Target Scale = 0.74
+
+>>> Step 65: Ratio 0.75. Target Scale = 0.75
+
+>>> Step 66: Ratio 0.80. Target Scale = 0.80
+
+>>> Step 67: Ratio 0.79. Target Scale = 0.79
+Evaluating:  60%|██████    | 3/5 [00:06<00:02,  1.42s/it, SR=1.00, CR=0.00, Avg PL=22.79, Avg LoRA=0.46, AwAcc=1.00, AwF1=1.00]Evaluating:  80%|████████  | 4/5 [00:06<00:01,  1.48s/it, SR=1.00, CR=0.00, Avg PL=22.79, Avg LoRA=0.46, AwAcc=1.00, AwF1=1.00]
+>>> Step 19: Ratio 0.97. Target Scale = 0.97
+
+>>> Step 34: Ratio 0.96. Target Scale = 0.96
+
+>>> Step 36: Ratio 0.95. Target Scale = 0.95
+
+>>> Step 39: Ratio 0.94. Target Scale = 0.94
+
+>>> Step 41: Ratio 0.93. Target Scale = 0.93
+Evaluating:  80%|████████  | 4/5 [00:07<00:01,  1.48s/it, SR=1.00, CR=0.00, Avg PL=22.09, Avg LoRA=0.57, AwAcc=1.00, AwF1=1.00]Evaluating: 100%|██████████| 5/5 [00:07<00:00,  1.27s/it, SR=1.00, CR=0.00, Avg PL=22.09, Avg LoRA=0.57, AwAcc=1.00, AwF1=1.00]Evaluating: 100%|██████████| 5/5 [00:07<00:00,  1.42s/it, SR=1.00, CR=0.00, Avg PL=22.09, Avg LoRA=0.57, AwAcc=1.00, AwF1=1.00]
+
+
+==========================================================
+AWARENESS PREDICTION ACCURACY
+==========================================================
+Total Predictions: 2487
+Correct Predictions: 2487
+Accuracy: 100.00% (Threshold: 0.5, M: 1)
+TP: 1345, TN: 1142, FP: 0, FN: 0
+==========================================================
+
+=== DONE cluster_aware_ignorant at 15:31:48 ===

@@ -99,7 +99,7 @@ class CrowdSimVarNum(CrowdSim):
                     px, py, gx, gy = np.random.uniform(-self.arena_size, self.arena_size, 4)
                     if np.linalg.norm([px - gx, py - gy]) >= 8:
                         break
-                self.robot.set(px, py, gx, gy, 0, 0, np.random.uniform(0, 2 * np.pi))
+                self.robot.set(px, py, gx, gy, 0, 0, np.arctan2(gy - py, gx - px))  # initial heading points at the goal
                 if self.aggressiveness_factor is None:
                     aggr_index = np.random.randint(len(self.all_possible_aggr_factor))
                     aggr_factor = self.all_possible_aggr_factor[aggr_index]
@@ -161,10 +161,7 @@ class CrowdSimVarNum(CrowdSim):
 
             for i, agent in enumerate([self.robot] + self.humans):
                 # keep human at least 3 meters away from robot
-                if self.robot.kinematics == 'unicycle' and i == 0:
-                    min_dist = self.circle_radius / 2  # Todo: if circle_radius <= 4, it will get stuck here
-                else:
-                    min_dist = human.radius + agent.radius + self.discomfort_dist
+                min_dist = human.radius + agent.radius + self.discomfort_dist
                 if norm((px - agent.px, py - agent.py)) < min_dist or \
                         norm((px - agent.gx, py - agent.gy)) < min_dist:
                     collide = True
@@ -356,6 +353,12 @@ class CrowdSimVarNum(CrowdSim):
         
         if self.phase is not None:
             phase = self.phase
+        # If make_env() called set_test_case(N) (visualize/--save_slides path),
+        # honor that here so reset() doesn't silently fall back to case_counter=0.
+        # test.py never calls set_test_case (its ax is None), so self.test_case
+        # stays None there and auto-increment is preserved.
+        if test_case is None and getattr(self, 'test_case', None) is not None:
+            test_case = self.test_case
         if test_case is not None:
             self.case_counter[phase] = test_case
         self.global_time = 0
@@ -445,10 +448,7 @@ class CrowdSimVarNum(CrowdSim):
 
 
         # check if reaching the goal
-        if self.robot.kinematics == 'unicycle':
-            goal_radius = 0.6
-        else:
-            goal_radius = self.robot.radius
+        goal_radius = self.robot.radius
         reaching_goal = norm(
             np.array(self.robot.get_position()) - np.array(self.robot.get_goal_position())) < goal_radius
 
@@ -497,10 +497,7 @@ class CrowdSimVarNum(CrowdSim):
 
         else:
             # potential reward
-            if self.robot.kinematics == 'holonomic':
-                pot_factor = 2
-            else:
-                pot_factor = 3
+            pot_factor = 2
             potential_cur = np.linalg.norm(
                 np.array([self.robot.px, self.robot.py]) - np.array(self.robot.get_goal_position()))
             reward = pot_factor * (-abs(potential_cur) - self.potential) # when moving towards the goal, the reward is positve
@@ -571,7 +568,8 @@ class CrowdSimVarNum(CrowdSim):
                     l_scale = 0.0
 
                 s = np.clip(l_scale, 0, 1)
-                segment_color = (1.0, 1.0 - s, 0.0)
+                # lora 0 → orange (1.0, 0.5, 0.0), lora 1 → dark red (0.6, 0.0, 0.0)
+                segment_color = (1.0, 0.5 * (1.0 - s), 0.0)
                 # Thicker trail (was linewidth=2) so the robot's path stands
                 # out clearly against the human circles + goal in the final frame.
                 ax.add_artist(mlines.Line2D([pos1[0], pos2[0]], [pos1[1], pos2[1]], color=segment_color, linestyle='-', alpha=0.85, linewidth=4.0))
@@ -631,9 +629,8 @@ class CrowdSimVarNum(CrowdSim):
             print(f"path: {save_path} is empty!!! Skip animate the pics")
             return
 
-        # Generate final frame if outcome is provided
-        if outcome is not None:
-            self.plot_final_frame(save_path, outcome, avg_lora_scale if avg_lora_scale is not None else 0.0, behaviour=behaviour)
+        # The static end-of-episode summary frame (z_final_frame.png + its 20-frame
+        # hold) was removed — the MP4 now ends on the last simulator step.
 
         all_pic_filenames = os.path.join(save_path, "*.png")
         generated_mp4_filename = os.path.join(save_path, f"{filename}.mp4")
@@ -663,12 +660,6 @@ class CrowdSimVarNum(CrowdSim):
             image = np.pad(image, ((0, new_height - height), (0, new_width - width), (0, 0)), mode='constant')
 
             images.append(image)
-            
-            # Repeat the final frame to make it last longer (e.g., 2 seconds at 10 fps = 20 frames)
-            if "z_final_frame.png" in filename:
-                for _ in range(20):
-                    images.append(image)
-            
             os.remove(filename)
 
         writer = imageio.get_writer(generated_mp4_filename, fps=10, codec='libx264')
@@ -683,15 +674,21 @@ class CrowdSimVarNum(CrowdSim):
     def plot_scenario(self, alert_agent_id, save_path):
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 
-        # Robot color: red when aggressive (lora_scale = 1), yellow when conservative (lora_scale = 0)
-        # Gradually change depending on the lora scale
-        if hasattr(self.robot, 'lora_scale'):
+        # Robot color:
+        #   LoRA model      → gradient yellow (lora_scale=0) → red (lora_scale=1)
+        #   non-LoRA model  → solid red (the naive baseline; differentiates it from
+        #                     the conservative LoRA-disabled run which renders yellow)
+        is_lora_model = getattr(self, 'is_lora_model', True)
+        if not is_lora_model:
+            robot_color = (0.6, 0.0, 0.0)  # dark red, matches lora=1 endpoint
+        elif hasattr(self.robot, 'lora_scale'):
             scale = np.clip(self.robot.lora_scale, 0, 1)
-            robot_color = (1.0, 1.0 - scale, 0.0)
+            # lora_scale 0 → orange (1.0, 0.5, 0.0), lora_scale 1 → dark red (0.6, 0.0, 0.0)
+            robot_color = (1.0 - 0.4 * scale, 0.5 * (1.0 - scale), 0.0)
         elif hasattr(self.robot, 'lora_enabled') and self.robot.lora_enabled:
             robot_color = 'red'
         else:
-            robot_color = 'yellow'
+            robot_color = 'orange'
 
         goal_color = 'purple'
         arrow_color_robot = "#ff6600"
@@ -717,8 +714,8 @@ class CrowdSimVarNum(CrowdSim):
             return newPoint
 
         fig, ax = plt.subplots(figsize=(7, 7), dpi=300)  # Increased dpi for higher resolution
-        ax.set_xlim(-10, 10)
-        ax.set_ylim(-10, 10)
+        ax.set_xlim(-7, 7)
+        ax.set_ylim(-7, 7)
         ax.set_xticks([])  # Hide x-axis numbers
         ax.set_yticks([])  # Hide y-axis numbers
         artists = []
@@ -744,11 +741,15 @@ class CrowdSimVarNum(CrowdSim):
                     pos2 = p2
                     l_scale = getattr(self.robot, 'lora_scale', 0.0)
 
-                # Calculate color for this segment
-                s = np.clip(l_scale, 0, 1)
-                segment_color = (1.0, 1.0 - s, 0.0)
-                
-                segment = mlines.Line2D([pos1[0], pos2[0]], [pos1[1], pos2[1]], color=segment_color, linestyle=':', alpha=0.5, linewidth=1)
+                # Non-LoRA baselines render the trail solid dark red to match the robot dot.
+                if not is_lora_model:
+                    segment_color = (0.6, 0.0, 0.0)
+                else:
+                    s = np.clip(l_scale, 0, 1)
+                    # lora 0 → orange (1.0, 0.5, 0.0), lora 1 → dark red (0.6, 0.0, 0.0)
+                    segment_color = (1.0 - 0.4 * s, 0.5 * (1.0 - s), 0.0)
+
+                segment = mlines.Line2D([pos1[0], pos2[0]], [pos1[1], pos2[1]], color=segment_color, linestyle=':', alpha=0.5, linewidth=4)
                 ax.add_artist(segment)
                 artists.append(segment)
 
@@ -762,12 +763,15 @@ class CrowdSimVarNum(CrowdSim):
             start_marker = mlines.Line2D([start_pos[0]], [start_pos[1]], color='purple', marker='^', linestyle='None', markersize=12, label='Start', alpha=0.8)
             ax.add_artist(start_marker)
             artists.append(start_marker)
-        # Per-frame info box — Path Length only. The previous version also
-        # showed "LoRA Scale: ..." on every frame; removed entirely because
-        # it cluttered the animation and was misleading for static / switching
-        # behaviours where LoRA is constant or binary.
+        # Per-frame info box — Path Length always; Adaptation Scale only for
+        # adaptive_* runs (the value is meaningless / constant for everything else).
+        # Font 1.5x previous size and the anchor is moved into the new (-7, 7) view.
+        behaviour = getattr(self, 'lora_behaviour', '') or ''
         info_text = f"Path Length: {self.cumulative_path_length:.2f}m"
-        ax.text(-9.5, 9.5, info_text, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+        if 'adaptive' in behaviour.lower():
+            scale_val = float(getattr(self.robot, 'lora_scale', 0.0))
+            info_text += f"\nAdaptation Scale: {scale_val:.2f}"
+        ax.text(-6.7, 6.7, info_text, fontsize=15, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
         sensor_range = plt.Circle(self.robot.get_position(), self.robot.sensor_range + self.robot.radius + self.config.humans.radius, fill=False, color=range_color, linestyle='--')
         ax.add_artist(sensor_range)
