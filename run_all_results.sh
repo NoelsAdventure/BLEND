@@ -15,14 +15,15 @@
 #
 # Total concurrent test.py processes peaks at:
 #   OUTER_PARALLEL × MAX_PARALLEL_PER_SCRIPT
-# (defaults: 3 × 4 = 12 concurrent; tune for your GPU memory budget).
+# (defaults: 1 × 4 = 4 concurrent; tune for your GPU memory budget).
 #
 # Usage:
 #   ./run_all_results.sh                              # full sweep, 2 seeds
 #   SEEDS="10"            ./run_all_results.sh        # single seed
 #   SEEDS="10 20 42"      ./run_all_results.sh        # 3 seeds
-#   OUTER_PARALLEL=6      ./run_all_results.sh        # all 6 sub-invocations at once
+#   OUTER_PARALLEL=3      ./run_all_results.sh        # run more sub-scripts concurrently
 #   MAX_PARALLEL_PER_SCRIPT=2 ./run_all_results.sh    # GPU-constrained mode
+#   ADAPTIVE_BEHAVIOURS="adaptive_action_gt" ./run_all_results.sh  # rebuttal only
 #   SKIP_ABLATION=1       ./run_all_results.sh        # baselines + adaptive only
 #   SKIP_BASELINES=1 SKIP_ADAPTIVE=1 ./run_all_results.sh  # ablation only
 
@@ -30,11 +31,12 @@ set -u
 
 # --- Config ---------------------------------------------------------------
 SEEDS="${SEEDS:-42 1000 2000 3000 4000}"
-OUTER_PARALLEL="${OUTER_PARALLEL:-3}"        # how many sub-scripts run concurrently
+OUTER_PARALLEL="${OUTER_PARALLEL:-1}"        # how many sub-scripts run concurrently
 MAX_PARALLEL_PER_SCRIPT="${MAX_PARALLEL_PER_SCRIPT:-4}"  # per sub-script
 TEST_SIZE="${TEST_SIZE:-1250}"
 HUMAN_NUM="${HUMAN_NUM:-20}"
 SCENARIOS="${SCENARIOS:-seperate_mixed_5050 seperate_all_aware seperate_all_ignorant cluster_aware_ignorant}"
+ADAPTIVE_BEHAVIOURS="${ADAPTIVE_BEHAVIOURS:-adaptive_gt adaptive_action_gt}"
 
 # Sub-script toggles (1 to skip)
 SKIP_BASELINES="${SKIP_BASELINES:-0}"
@@ -46,6 +48,7 @@ export MAX_PARALLEL="$MAX_PARALLEL_PER_SCRIPT"
 export TEST_SIZE
 export HUMAN_NUM
 export SCENARIOS
+export ADAPTIVE_BEHAVIOURS
 
 LOG_DIR="${LOG_DIR:-/tmp/run_all_results}"
 mkdir -p "$LOG_DIR"
@@ -72,6 +75,7 @@ echo "  Peak concurrent procs   : $((OUTER_PARALLEL * MAX_PARALLEL_PER_SCRIPT))"
 echo "  TEST_SIZE               : $TEST_SIZE"
 echo "  HUMAN_NUM               : $HUMAN_NUM"
 echo "  SCENARIOS               : $SCENARIOS"
+echo "  ADAPTIVE_BEHAVIOURS     : $ADAPTIVE_BEHAVIOURS"
 echo "  total sub-script jobs   : ${#JOBS[@]}"
 echo "  log dir                 : $LOG_DIR"
 echo "=========================================================="
@@ -153,7 +157,7 @@ launch_subscript() {
     echo "[$(date '+%H:%M:%S')] START  $kind  seed=$seed   (log: $log_path)"
     # Each sub-script accepts --exp via its own CLI parser; SEED env var
     # controls the env-side random seed.
-    if SEED="$seed" $script --exp "$seed" > "$log_path" 2>&1; then
+    if SEED="$seed" SEEDS="$seed" $script --exp "$seed" > "$log_path" 2>&1; then
         echo x >> "$LOG_DIR/.counters/ok"
         local sub_done=$(wc -l < "$LOG_DIR/.counters/ok")
         local sub_fail=$(wc -l < "$LOG_DIR/.counters/fail" 2>/dev/null || echo 0)

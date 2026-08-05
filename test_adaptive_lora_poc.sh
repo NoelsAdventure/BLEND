@@ -16,17 +16,18 @@ CHECKPOINT="03400.pt"
 TEST_SIZE="${TEST_SIZE:-250}"
 DISCREPANCY_THRESHOLD=0.15
 DISCREPANCY_M=1
-HUMAN_NUM=20
-# Random seed for the env / episode generation. Change this to walk through
-# different episode sets — useful when hunting for an always_off collision or
-# any other specific failure case. Override per-run via env:
+HUMAN_NUM="${HUMAN_NUM:-20}"
+# Random seed(s) for the env / episode generation. SEED is kept for one-off
+# backwards-compatible runs; use SEEDS for a multi-seed sweep.
 #   SEED=123 ./test_adaptive_lora_poc.sh --visualize
-SEED="${SEED:-3000}"
+#   SEEDS="42 1000 2000 3000 4000" ./test_adaptive_lora_poc.sh
+SEEDS="${SEEDS:-${SEED:-42 1000 2000 3000 4000}}"
+read -r -a SEEDS_ARR <<< "$SEEDS"
 # Shadow predictor scoring against ground truth:
 #   always    — every behaviour (default; lets adaptive_gt etc. report AwAcc)
 #   pred_only — only when behaviour is switching_pred / adaptive_pred
 #   off       — never run the shadow eval
-AWARENESS_EVAL="pred_only"
+AWARENESS_EVAL="${AWARENESS_EVAL:-off}"
 # Optional predictor tag — selects friendly_predictor_${PREDICTOR_TAG}.pth
 # instead of the canonical friendly_predictor.pth. Examples:
 #   PREDICTOR_TAG=""                 # canonical (default)
@@ -85,42 +86,54 @@ SCRIPT_PASSTHRU_ARGS=("${_remaining_args[@]}")
 LOG_DIR="${LOG_DIR:-/tmp/adaptive_lora_poc}"
 mkdir -p "$LOG_DIR"
 
-# SCENARIOS=("seperate_mixed_5050")
-SCENARIOS=("seperate_all_aware" "seperate_all_ignorant" "seperate_mixed_5050" "cluster_aware_ignorant")
-# SCENARIOS=("seperate_mixed_5050")
-# Use adaptive_gt to regenerate the *_adaptive_gt.json training files that
-# train_alpha_predictor.py reads. _gt drives LoRA from ground-truth awareness,
-# so the resulting trajectories aren't biased by a (currently wrong) predictor,
-# and the dump's `actual_friendly` label is clean for every human (in-range or
-# not). Flip to ("switching_pred" "adaptive_pred") AFTER retraining if you want
-# to re-measure the predictor's deployment behaviour.
-BEHAVIOURS=("adaptive_discrepancy")
+if [ -f "./gpu_affinity.sh" ]; then
+    . ./gpu_affinity.sh
+fi
+BLEND_GPUS="${BLEND_GPUS:-$(blend_detect_gpus)}"
+
+# SCENARIOS="seperate_mixed_5050"
+SCENARIOS_DEFAULT="seperate_all_aware seperate_all_ignorant seperate_mixed_5050 cluster_aware_ignorant"
+SCENARIOS="${SCENARIOS:-$SCENARIOS_DEFAULT}"
+read -r -a SCENARIOS_ARR <<< "$SCENARIOS"
+# Default comparison: existing weight-space adaptive_gt vs action-space
+# adaptive_action_gt. Override with:
+#   ADAPTIVE_BEHAVIOURS="adaptive_action_gt" ./test_adaptive_lora_poc.sh
+# Use adaptive_gt alone with --save_episode_dump always when regenerating the
+# *_adaptive_gt.json training anchors.
+ADAPTIVE_BEHAVIOURS="${ADAPTIVE_BEHAVIOURS:-adaptive_action_gt}"
+read -r -a BEHAVIOURS <<< "$ADAPTIVE_BEHAVIOURS"
+# BEHAVIOURS=("adaptive_discrepancy")
 # BEHAVIOURS=("always_off" "always_on" "switching_gt" "adaptive_gt" "adaptive_pred")
 # BEHAVIOURS=("switching_pred" "adaptive_pred")
 # BEHAVIOURS=("always_off")
 
 echo "MAX_PARALLEL = $MAX_PARALLEL  (logs in $LOG_DIR)"
+echo "BLEND_GPUS = $BLEND_GPUS"
 [ -n "$EXP_ID" ] && echo "EXP_ID = $EXP_ID  → output filenames will get '_exp${EXP_ID}' suffix"
 
 # One combo as a background job. Output goes to its own log file.
 launch_combo() {
-    local scenario="$1" behaviour="$2"
+    local scenario="$1" behaviour="$2" gpu_id="$3" seed="$4"
+    local exp_id="$EXP_ID"
     local tag_suffix=""
     [ -n "$PREDICTOR_TAG" ] && tag_suffix="${tag_suffix}_${PREDICTOR_TAG}"
-    [ -n "$EXP_ID" ]        && tag_suffix="${tag_suffix}_exp${EXP_ID}"
-    local log_path="$LOG_DIR/${scenario}_${behaviour}${tag_suffix}.log"
+    if [ -z "$exp_id" ] && [ "${#SEEDS_ARR[@]}" -gt 1 ]; then
+        exp_id="$seed"
+    fi
+    [ -n "$exp_id" ] && tag_suffix="${tag_suffix}_exp${exp_id}"
+    local log_path="$LOG_DIR/${scenario}_${behaviour}_seed${seed}${tag_suffix}.log"
     local EXTRA_ARGS=()
     [ -n "$PREDICTOR_TAG" ] && EXTRA_ARGS+=(--predictor_tag "$PREDICTOR_TAG")
-    [ -n "$EXP_ID" ]        && EXTRA_ARGS+=(--exp_id "$EXP_ID")
-    echo "[$(date '+%H:%M:%S')] START  $scenario × $behaviour   (log: $log_path)"
-    if python3 -u $SCRIPT --model_dir "$ADAPTIVE_MODEL" --test_model "$CHECKPOINT" \
+    [ -n "$exp_id" ]        && EXTRA_ARGS+=(--exp_id "$exp_id")
+    echo "[$(date '+%H:%M:%S')] START  $scenario × $behaviour  seed=$seed  GPU=$gpu_id   (log: $log_path)"
+    if CUDA_VISIBLE_DEVICES="$gpu_id" python3 -u $SCRIPT --model_dir "$ADAPTIVE_MODEL" --test_model "$CHECKPOINT" \
             --adaptive_lora_scenario "$scenario" \
             --lora_behaviour "$behaviour" \
             --discrepancy_threshold $DISCREPANCY_THRESHOLD \
             --discrepancy_m $DISCREPANCY_M \
             --human_num $HUMAN_NUM \
             --awareness_eval "$AWARENESS_EVAL" \
-            --seed "$SEED" \
+            --seed "$seed" \
             "${EXTRA_ARGS[@]}" \
             --test_size $TEST_SIZE \
             "${SCRIPT_PASSTHRU_ARGS[@]}" > "$log_path" 2>&1; then
@@ -131,14 +144,19 @@ launch_combo() {
 }
 
 running=0
-for scenario in "${SCENARIOS[@]}"; do
-    for behaviour in "${BEHAVIOURS[@]}"; do
-        launch_combo "$scenario" "$behaviour" &
-        running=$((running + 1))
-        if (( running >= MAX_PARALLEL )); then
-            wait -n
-            running=$((running - 1))
-        fi
+job_index=0
+for seed in "${SEEDS_ARR[@]}"; do
+    for scenario in "${SCENARIOS_ARR[@]}"; do
+        for behaviour in "${BEHAVIOURS[@]}"; do
+            gpu_id="$(blend_gpu_for_job "$job_index")"
+            launch_combo "$scenario" "$behaviour" "$gpu_id" "$seed" &
+            job_index=$((job_index + 1))
+            running=$((running + 1))
+            if (( running >= MAX_PARALLEL )); then
+                wait -n
+                running=$((running - 1))
+            fi
+        done
     done
 done
 wait  # drain the rest
@@ -149,7 +167,7 @@ echo "=========================================================="
 
 # Per-combo summary with ± 95% CI for SR (Wilson) and PL (mean ± 1.96·σ/√N).
 # Reads ${ADAPTIVE_MODEL}/test/all_evaluations.json (always-updated aggregate).
-SCENARIOS_STR="${SCENARIOS[*]}"
+SCENARIOS_STR="${SCENARIOS_ARR[*]}"
 BEHAVIOURS_STR="${BEHAVIOURS[*]}"
 EXP_SUFFIX=""
 [ -n "$EXP_ID" ] && EXP_SUFFIX="_exp${EXP_ID}"

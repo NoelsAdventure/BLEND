@@ -65,6 +65,11 @@ SCRIPT_PASSTHRU_ARGS=("${_remaining_args[@]}")
 LOG_DIR="${LOG_DIR:-/tmp/lora_ablation}"
 mkdir -p "$LOG_DIR"
 mkdir -p "$LOG_DIR/.counters"
+
+if [ -f "./gpu_affinity.sh" ]; then
+    . ./gpu_affinity.sh
+fi
+BLEND_GPUS="${BLEND_GPUS:-$(blend_detect_gpus)}"
 : > "$LOG_DIR/.counters/ok"
 : > "$LOG_DIR/.counters/fail"
 
@@ -80,6 +85,7 @@ echo "  TEST_SIZE     : $TEST_SIZE"
 echo "  SCALES        : $SCALES"
 echo "  SCENARIOS     : $SCENARIOS"
 echo "  MAX_PARALLEL  : $MAX_PARALLEL"
+echo "  BLEND_GPUS    : $BLEND_GPUS"
 echo "  SEED          : $SEED"
 [ -n "$EXTRA_EXP_ID" ] && echo "  EXTRA EXP_ID  : $EXTRA_EXP_ID  (appended after scale_X.X)"
 echo "  log dir       : $LOG_DIR"
@@ -87,14 +93,14 @@ echo "=========================================================="
 
 # Launch one (model × scenario × scale) combo as a background job.
 launch_combo() {
-    local name="$1" model_dir="$2" ckpt="$3" sc="$4" scale="$5"
+    local name="$1" model_dir="$2" ckpt="$3" sc="$4" scale="$5" gpu_id="$6"
     local exp_id="scale_${scale}"
     [ -n "$EXTRA_EXP_ID" ] && exp_id="${exp_id}_${EXTRA_EXP_ID}"
     local model_tag="${name//[^A-Za-z0-9]/_}"
     local log_path="$LOG_DIR/${model_tag}_${sc}_scale_${scale}.log"
     [ -n "$EXTRA_EXP_ID" ] && log_path="$LOG_DIR/${model_tag}_${sc}_scale_${scale}_${EXTRA_EXP_ID}.log"
-    echo "[$(date '+%H:%M:%S')] START  $name  ×  $sc  ×  α=$scale   (log: $log_path)"
-    if python3 -u test.py \
+    echo "[$(date '+%H:%M:%S')] START  $name  ×  $sc  ×  α=$scale  GPU=$gpu_id   (log: $log_path)"
+    if CUDA_VISIBLE_DEVICES="$gpu_id" python3 -u test.py \
             --model_dir "$model_dir" \
             --test_model "$ckpt" \
             --adaptive_lora_scenario "$sc" \
@@ -116,6 +122,7 @@ launch_combo() {
 }
 
 running=0
+job_index=0
 for entry in "${MODELS[@]}"; do
     name="${entry%%|*}"
     rest="${entry#*|}"
@@ -133,7 +140,9 @@ for entry in "${MODELS[@]}"; do
 
     for sc in $SCENARIOS; do
         for scale in $SCALES; do
-            launch_combo "$name" "$model_dir" "$ckpt" "$sc" "$scale" &
+            gpu_id="$(blend_gpu_for_job "$job_index")"
+            launch_combo "$name" "$model_dir" "$ckpt" "$sc" "$scale" "$gpu_id" &
+            job_index=$((job_index + 1))
             running=$((running + 1))
             if (( running >= MAX_PARALLEL )); then
                 wait -n

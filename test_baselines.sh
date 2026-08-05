@@ -64,6 +64,11 @@ BASELINES=(
 LOG_DIR="${LOG_DIR:-/tmp/baselines}"
 mkdir -p "$LOG_DIR"
 
+if [ -f "./gpu_affinity.sh" ]; then
+    . ./gpu_affinity.sh
+fi
+BLEND_GPUS="${BLEND_GPUS:-$(blend_detect_gpus)}"
+
 START_TS=$(date +%s)
 echo "=========================================================="
 echo "Baseline test sweep starting"
@@ -73,6 +78,7 @@ echo "  SCENARIOS     : $SCENARIOS"
 echo "  SEEDS         : $SEEDS"
 echo "  baselines     : ${#BASELINES[@]}"
 echo "  MAX_PARALLEL  : $MAX_PARALLEL"
+echo "  BLEND_GPUS    : $BLEND_GPUS"
 [ -n "$EXP_ID" ] && echo "  EXP_ID        : $EXP_ID  → output filenames suffixed '_exp${EXP_ID}'"
 echo "  log dir       : $LOG_DIR"
 echo "=========================================================="
@@ -85,7 +91,7 @@ mkdir -p "$LOG_DIR/.counters"
 
 # Launch one combo as a background job.
 launch_combo() {
-    local name="$1" model_dir="$2" ckpt="$3" sc="$4" seed="$5"
+    local name="$1" model_dir="$2" ckpt="$3" sc="$4" seed="$5" gpu_id="$6"
     # exp_id always encodes the seed; optionally prefixed by EXP_ID for run tagging.
     local exp_id
     if [ -n "$EXP_ID" ]; then
@@ -94,8 +100,8 @@ launch_combo() {
         exp_id="$seed"
     fi
     local log_path="$LOG_DIR/${name//[^A-Za-z0-9]/_}_${sc}_exp${exp_id}.log"
-    echo "[$(date '+%H:%M:%S')] START  $name  ×  $sc  × seed=$seed   (log: $log_path)"
-    if python3 -u test.py \
+    echo "[$(date '+%H:%M:%S')] START  $name  ×  $sc  × seed=$seed  GPU=$gpu_id   (log: $log_path)"
+    if CUDA_VISIBLE_DEVICES="$gpu_id" python3 -u test.py \
             --model_dir "$model_dir" \
             --test_model "$ckpt" \
             --adaptive_lora_scenario "$sc" \
@@ -116,6 +122,7 @@ launch_combo() {
 }
 
 running=0
+job_index=0
 for entry in "${BASELINES[@]}"; do
     name="${entry%%|*}"
     rest="${entry#*|}"
@@ -135,7 +142,9 @@ for entry in "${BASELINES[@]}"; do
 
     for sc in $SCENARIOS; do
         for SEED in $SEEDS; do
-            launch_combo "$name" "$model_dir" "$ckpt" "$sc" "$SEED" &
+            gpu_id="$(blend_gpu_for_job "$job_index")"
+            launch_combo "$name" "$model_dir" "$ckpt" "$sc" "$SEED" "$gpu_id" &
+            job_index=$((job_index + 1))
             running=$((running + 1))
             if (( running >= MAX_PARALLEL )); then
                 wait -n          # block until ANY background job finishes

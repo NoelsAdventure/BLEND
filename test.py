@@ -44,7 +44,7 @@ def main():
     parser.add_argument('--save_slides', default=False, action='store_true')
     # dynamic LoRA scale for testing gradual changes
     parser.add_argument('--lora_scale', type=float, default=1.0)
-    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred', 'none'], default='adaptive_discrepancy')
+    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred', 'none'], default='adaptive_discrepancy')
     parser.add_argument('--discrepancy_threshold', type=float, default=0.05, help='Threshold for classifying a human as aware/friendly based on discrepancy score')
     parser.add_argument('--discrepancy_m', type=int, default=1, help='Number of consecutive times the score must be above threshold to classify as aware')
     parser.add_argument('--exp_id', type=str, default=None)

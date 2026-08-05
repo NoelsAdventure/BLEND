@@ -43,7 +43,11 @@ RUN groupadd -g ${GROUP_ID} dockeruser && \
     chown -R dockeruser:dockeruser /workspace
 
 # Step 8: Set environment variables
-ENV PYTHONUNBUFFERED=1
+# The docker run --gpus flag controls which devices are mounted; these defaults
+# keep all mounted GPUs visible to CUDA/PyTorch inside the container.
+ENV PYTHONUNBUFFERED=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 # Step 9: Expose a port if your application uses one
 EXPOSE 8888

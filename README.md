@@ -51,17 +51,19 @@ sudo systemctl restart docker
 docker build --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) -t blend:latest .
 ```
 
-5.) Run the docker image by:
+5.) Run one docker container with all GPUs visible:
 
 ```bash
-docker run --gpus '"device=0,1,2,3"' --shm-size=32g -it -p 12345:8888 -v /home/docker_share:/home/dockeruser/shared -v $(pwd):/workspace blend:latest /bin/bash
+docker run --gpus all --shm-size=32g -it -p 12345:8888 -v /home/docker_share:/home/dockeruser/shared -v $(pwd):/workspace blend:latest /bin/bash
 ```
 
-docker run --gpus '"device=0"' --shm-size=32g -it -p 1234:8888 -v /home/docker_share:/home/dockeruser/shared -v $(pwd):/workspace blend:latest /bin/bash
-docker run --gpus '"device=1"' --shm-size=32g -it -p 1235:8888 -v /home/docker_share:/home/dockeruser/shared -v $(pwd):/workspace blend:latest /bin/bash
-docker run --gpus '"device=2"' --shm-size=32g -it -p 1245:8888 -v /home/docker_share:/home/dockeruser/shared -v $(pwd):/workspace blend:latest /bin/bash
-docker run --gpus '"device=3"' --shm-size=32g -it -p 123:8888 -v /home/docker_share:/home/dockeruser/shared -v $(pwd):/workspace blend:latest /bin/bash
+Inside the container, confirm visibility with `nvidia-smi`. A single `python train.py`
+process still uses one CUDA device; the sweep scripts use `gpu_affinity.sh` to spread
+parallel jobs across the visible GPUs. Override the device list when needed:
 
+```bash
+BLEND_GPUS=0,1,2,3 MAX_PARALLEL=4 ./test_baselines.sh
+```
 
 
 6.) Test the pretrained models with `python test.py`

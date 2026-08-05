@@ -30,7 +30,7 @@ class Config(object):
     aci_related.noise_clip_for_cost = 0.00
     aci_related.only_circular = False #always false
     aci_related.only_prediction_line = False
-    constrained_rl_related.cost_limit = 0.4
+    constrained_rl_related.cost_limit = 1.2
     constrained_rl_related.lag_init = 0.10
     constrained_rl_related.lag_lr = 16e-4
     
@@ -41,13 +41,13 @@ class Config(object):
     env.val_size = 100
     env.test_size = 500
     # note = f"LoraF_invi_visi"
-    note = "Lora_seed_300000"
+    note = "Conservative_Backbone_CostLimit_1.2"
     # whether robot is visible to humans (whether humans respond to the robot's motion)
     robot.visible = True # tag: 05/02/2024
     # LoRA config
     lora.rank = 4
     lora.alpha = 128
-    lora.use_lora = True
+    lora.use_lora = False
     # action space of the robot
     action_space = BaseConfig()
     # holonomic or unicycle

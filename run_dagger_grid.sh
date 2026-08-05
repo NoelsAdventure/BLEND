@@ -35,6 +35,11 @@ MAX_PARALLEL="${MAX_PARALLEL:-2}"
 LOG_DIR="${LOG_DIR:-/tmp/dagger_grid}"
 mkdir -p "$LOG_DIR"
 
+if [ -f "./gpu_affinity.sh" ]; then
+    . ./gpu_affinity.sh
+fi
+BLEND_GPUS="${BLEND_GPUS:-$(blend_detect_gpus)}"
+
 START_TS=$(date +%s)
 echo "=========================================================="
 echo "DAgger grid starting"
@@ -44,6 +49,7 @@ echo "  DAGGER_ITERATIONS : $DAGGER_ITERATIONS"
 echo "  DAGGER_TEST_SIZE  : $DAGGER_TEST_SIZE"
 echo "  EPOCHS_PER_ITER   : $DAGGER_EPOCHS_PER_ITER"
 echo "  MAX_PARALLEL      : $MAX_PARALLEL"
+echo "  BLEND_GPUS        : $BLEND_GPUS"
 echo "  log dir           : $LOG_DIR"
 echo "=========================================================="
 
@@ -52,12 +58,12 @@ mkdir -p "$LOG_DIR/.counters"
 : > "$LOG_DIR/.counters/fail"
 
 launch_dagger_sweep() {
-    local hn="$1" rollout="$2"
+    local hn="$1" rollout="$2" gpu_id="$3"
     local driver="${rollout%_pred}"
     local tag="h${hn}_${driver}"
     local log_path="$LOG_DIR/dagger_${tag}.log"
-    echo "[$(date '+%H:%M:%S')] START  TAG=$tag   (log: $log_path)"
-    if python3 -u dagger_loop.py \
+    echo "[$(date '+%H:%M:%S')] START  TAG=$tag  GPU=$gpu_id   (log: $log_path)"
+    if CUDA_VISIBLE_DEVICES="$gpu_id" python3 -u dagger_loop.py \
         --human_num "$hn" \
         --rollout_behaviour "$rollout" \
         --iterations "$DAGGER_ITERATIONS" \
@@ -74,10 +80,13 @@ launch_dagger_sweep() {
 
 running=0
 n_total=0
+job_index=0
 for hn in $HUMAN_NUMS; do
     for rollout in $ROLLOUTS; do
         n_total=$((n_total + 1))
-        launch_dagger_sweep "$hn" "$rollout" &
+        gpu_id="$(blend_gpu_for_job "$job_index")"
+        launch_dagger_sweep "$hn" "$rollout" "$gpu_id" &
+        job_index=$((job_index + 1))
         running=$((running + 1))
         if (( running >= MAX_PARALLEL )); then
             wait -n

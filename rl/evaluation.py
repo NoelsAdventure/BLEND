@@ -251,20 +251,22 @@ def _apply_cluster_layout(baseEnv, cluster_spread=1.5, goal_jitter=1.0):
     baseEnv.robot.visible_to_humans = visible_flags
 
 
-def _apply_lora_scale(actor_critic, baseEnv, scale):
-    """Single source of truth for keeping env-side state and every LoRA
-    module's dynamic_scale in lock-step. Use this everywhere LoRA scale is
-    set — avoids the lock-step drift class of bug.
-    """
-    scale = float(scale)
-    baseEnv.robot.lora_scale = scale
-    baseEnv.robot.lora_enabled = (scale > 0)
+def _set_lora_module_scale(actor_critic, scale):
     if actor_critic is None:
         return
     from rl.networks.network_utils import LoRALinear, LoRAAdapter
     for module in actor_critic.modules():
         if isinstance(module, (LoRALinear, LoRAAdapter)):
-            module.dynamic_scale = scale
+            module.dynamic_scale = float(scale)
+
+
+def _apply_lora_scale(actor_critic, baseEnv, scale, update_modules=True):
+    """Keep env-side LoRA state and, by default, LoRA modules in lock-step."""
+    scale = float(scale)
+    baseEnv.robot.lora_scale = scale
+    baseEnv.robot.lora_enabled = (scale > 0)
+    if update_modules:
+        _set_lora_module_scale(actor_critic, scale)
 
 
 def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False, test_args=None, video_save_path=None):
@@ -316,6 +318,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         eval_predictor_this_run = True
 
     if config.robot.policy not in ['orca', 'social_force']:
+        if behaviour == 'adaptive_action_gt' and not _has_lora_modules(actor_critic):
+            raise ValueError('adaptive_action_gt requires a neural policy with LoRA modules')
+
         eval_recurrent_hidden_states = {}
 
         node_num = 1
@@ -326,6 +331,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         eval_recurrent_hidden_states['human_human_edge_rnn'] = torch.zeros(num_processes, edge_num,
                                                                            actor_critic.base.human_human_edge_rnn_size,
                                                                            device=device)
+    elif behaviour == 'adaptive_action_gt':
+        raise ValueError('adaptive_action_gt is only supported for neural LoRA policies')
 
     eval_masks = torch.zeros(num_processes, 1, device=device)
 
@@ -413,6 +420,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             eval_recurrent_hidden_states['human_human_edge_rnn'] = torch.zeros(num_processes, edge_num,
                                                                             actor_critic.base.human_human_edge_rnn_size,
                                                                             device=device)
+            if behaviour == 'adaptive_action_gt':
+                endpoint_hidden_states = {
+                    'cons': {key: value.clone() for key, value in eval_recurrent_hidden_states.items()},
+                    'coop': {key: value.clone() for key, value in eval_recurrent_hidden_states.items()},
+                }
         
         # Adaptive LoRA Proof of Concept: Initialization
         scenario = getattr(test_args, 'adaptive_lora_scenario', 'none')
@@ -444,7 +456,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         # Behaviours that drive the per-step adaptive/switching loop.
         _ADAPTIVE_BEHAVIOURS = {
             'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred',
-            'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
+            'adaptive_gt', 'adaptive_action_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
         }
 
         if scenario == 'seperate_mixed_5050':
@@ -661,7 +673,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         tn += 1
 
             # Continuous adaptive scale or majority-based switching
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
                 robot_pos = baseEnv.robot.get_position()
                 robot_theta = obs['robot_node'][0, 0, 6].item() # robot heading
 
@@ -733,6 +745,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         if 'switching' in behaviour:
                             msg = f"Ratio {friendly_in_range}/{humans_in_range_count}={ratio:.2f}"
                         print(f"\n>>> Step {stepCounter}: {msg}. Target Scale = {target_scale:.2f}")
+                if behaviour == 'adaptive_action_gt':
+                    _apply_lora_scale(actor_critic, baseEnv, target_scale, update_modules=False)
+                else:
                     _apply_lora_scale(actor_critic, baseEnv, target_scale)
             
             # Collect data for the CURRENT step before taking the next action
@@ -793,11 +808,28 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             if config.robot.policy not in ['orca', 'social_force']:
                 # run inference on the NN policy
                 with torch.no_grad():
-                    _, action, _, eval_recurrent_hidden_states = actor_critic.act(
-                        obs,
-                        eval_recurrent_hidden_states,
-                        eval_masks,
-                        deterministic=True)
+                    if behaviour == 'adaptive_action_gt':
+                        kappa_t = float(baseEnv.robot.lora_scale)
+                        _set_lora_module_scale(actor_critic, 0.0)
+                        _, action_cons, _, endpoint_hidden_states['cons'] = actor_critic.act(
+                            obs,
+                            endpoint_hidden_states['cons'],
+                            eval_masks,
+                            deterministic=True)
+                        _set_lora_module_scale(actor_critic, 1.0)
+                        _, action_coop, _, endpoint_hidden_states['coop'] = actor_critic.act(
+                            obs,
+                            endpoint_hidden_states['coop'],
+                            eval_masks,
+                            deterministic=True)
+                        action = (1.0 - kappa_t) * action_cons + kappa_t * action_coop
+                        _set_lora_module_scale(actor_critic, kappa_t)
+                    else:
+                        _, action, _, eval_recurrent_hidden_states = actor_critic.act(
+                            obs,
+                            eval_recurrent_hidden_states,
+                            eval_masks,
+                            deterministic=True)
             else:
                 action = torch.zeros([1, 2], device=device)
             if not done:
