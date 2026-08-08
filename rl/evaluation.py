@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import os
 import csv
+import time
 from datetime import datetime
 import uuid
 
@@ -12,6 +13,7 @@ from train_alpha_predictor import (
     HUMAN_FEATURE_DIM, ROBOT_FEATURE_DIM, NUM_PRED_STEPS,
     build_human_feature_row,
 )
+from adaptive_mpc.mpc_controller import AdaptiveMPCController, MPCConfig
 
 
 def _maybe_load_friendly_predictor(behaviour, model_dir, device, logging, predictor_tag=None):
@@ -177,7 +179,7 @@ def _compute_is_friendly(behaviour, human, human_idx, baseEnv,
     else:
         actual_friendly = bool(baseEnv.robot.visible)
 
-    if '_gt' in behaviour:
+    if '_gt' in behaviour or behaviour == 'mpc_adaptive':
         is_friendly = actual_friendly
     elif '_pred' in behaviour:
         prob = pred_friendly_probs.get(human.id, 0.0)
@@ -260,6 +262,32 @@ def _set_lora_module_scale(actor_critic, scale):
             module.dynamic_scale = float(scale)
 
 
+def _set_lora_matrix_timing(actor_critic, enabled, reset=False):
+    if actor_critic is None:
+        return
+    from rl.networks.network_utils import LoRALinear, LoRAAdapter
+    for module in actor_critic.modules():
+        if isinstance(module, (LoRALinear, LoRAAdapter)):
+            module.profile_lora_matrix_time = bool(enabled)
+            if reset:
+                module.lora_matrix_time_ms = 0.0
+                module.lora_matrix_events = []
+
+
+def _collect_lora_matrix_time_ms(actor_critic):
+    if actor_critic is None:
+        return 0.0
+    from rl.networks.network_utils import LoRALinear, LoRAAdapter
+    total = 0.0
+    for module in actor_critic.modules():
+        if isinstance(module, (LoRALinear, LoRAAdapter)):
+            total += float(getattr(module, 'lora_matrix_time_ms', 0.0))
+            for start, end in getattr(module, 'lora_matrix_events', []):
+                total += float(start.elapsed_time(end))
+            module.lora_matrix_events = []
+    return total
+
+
 def _apply_lora_scale(actor_critic, baseEnv, scale, update_modules=True):
     """Keep env-side LoRA state and, by default, LoRA modules in lock-step."""
     scale = float(scale)
@@ -270,7 +298,7 @@ def _apply_lora_scale(actor_critic, baseEnv, scale, update_modules=True):
 
 
 class _DenseFullFinetuneInterpolator:
-    """Interpolates dense model parameters against a full-finetune endpoint.
+    """Interpolates loaded dense parameters against a full-finetune endpoint.
 
     The active policy is the LoRA model, but this baseline disables LoRA and
     interpolates only dense weights. LoRA-only tensors are intentionally ignored.
@@ -309,10 +337,10 @@ class _DenseFullFinetuneInterpolator:
             if mismatched:
                 examples = ', '.join(f'{n}->{k} base{bs} full{fs}' for n, k, bs, fs in mismatched[:8])
                 parts.append(f'shape mismatches: {examples}')
-            raise RuntimeError('adaptive_fullfinetune_gt checkpoint mismatch: ' + '; '.join(parts))
+            raise RuntimeError('full-finetune interpolation checkpoint mismatch: ' + '; '.join(parts))
 
         if not self.entries:
-            raise RuntimeError('adaptive_fullfinetune_gt found no dense parameters to interpolate')
+            raise RuntimeError('full-finetune interpolation found no dense parameters to interpolate')
 
     @staticmethod
     def _full_key_for_base_param(name):
@@ -331,14 +359,14 @@ class _DenseFullFinetuneInterpolator:
 
 
 def _maybe_build_fullfinetune_interpolator(behaviour, actor_critic, test_args, device, logging):
-    if behaviour != 'adaptive_fullfinetune_gt':
+    if behaviour not in {'adaptive_fullfinetune_gt', 'fixed_fullfinetune_scale'}:
         return None
     if actor_critic is None:
-        raise ValueError('adaptive_fullfinetune_gt is only supported for neural policies')
+        raise ValueError(f'{behaviour} is only supported for neural policies')
     if not _has_lora_modules(actor_critic):
-        raise ValueError('adaptive_fullfinetune_gt requires the LoRA model as W_base so base_layer weights are available')
+        raise ValueError(f'{behaviour} requires the LoRA model as W_base so base_layer weights are available')
 
-    ft_model_dir = getattr(test_args, 'fullfinetune_model_dir', 'trained_models/FullFineTune_invi_visi')
+    ft_model_dir = getattr(test_args, 'fullfinetune_model_dir', 'trained_models/Fullfinetune_invi_visi_new')
     ft_model = getattr(test_args, 'fullfinetune_test_model', '03400.pt')
     ft_path = os.path.join(ft_model_dir, 'checkpoints', ft_model)
     if not os.path.exists(ft_path):
@@ -348,10 +376,68 @@ def _maybe_build_fullfinetune_interpolator(behaviour, actor_critic, test_args, d
     interpolator = _DenseFullFinetuneInterpolator(actor_critic, full_state, device)
     interpolator.apply(0.0)
     _set_lora_module_scale(actor_critic, 0.0)
-    msg = f'Loaded adaptive_fullfinetune_gt endpoint from {ft_path}; interpolating {len(interpolator.entries)} dense tensors.'
+    msg = f'Loaded {behaviour} endpoint from {ft_path}; interpolating {len(interpolator.entries)} dense tensors from the loaded base model.'
     logging.info(msg)
     print(msg)
     return interpolator
+
+
+def _build_mpc_controller(config, baseEnv, test_args):
+    horizon = int(getattr(config.sim, 'predict_steps', 5))
+    dt = float(getattr(config.env, 'time_step', getattr(baseEnv, 'time_step', 0.25)))
+    v_max = float(getattr(baseEnv.robot, 'v_pref', 1.0))
+    return AdaptiveMPCController(MPCConfig(
+        dt=dt,
+        horizon=horizon,
+        v_max=v_max,
+        a_max=float(getattr(test_args, 'mpc_amax', 2.0)),
+        w_goal=float(getattr(test_args, 'mpc_w_goal', 10.0)),
+        w_accel=float(getattr(test_args, 'mpc_w_accel', 0.1)),
+        w_jerk=float(getattr(test_args, 'mpc_w_jerk', 0.1)),
+        w_coll=float(getattr(test_args, 'mpc_w_coll', 1.0e4)),
+    ))
+
+
+def _extract_mpc_human_predictions(obs, baseEnv, config):
+    robot_pos = obs['robot_node'][0, 0, :2].detach().cpu().numpy().astype(float)
+    spatial = obs['spatial_edges'][0].detach().cpu().numpy().astype(float)
+    horizon = int(getattr(config.sim, 'predict_steps', 5))
+    width = 2 * (horizon + 1)
+    if spatial.ndim != 2 or spatial.shape[1] < width:
+        return np.zeros((0, horizon, 2), dtype=float), 0, float('nan')
+
+    rel_traj = spatial[:, :width].reshape(spatial.shape[0], horizon + 1, 2)
+    current_rel = rel_traj[:, 0, :]
+    dists = np.linalg.norm(current_rel, axis=1)
+    sensor_range = float(getattr(baseEnv.robot, 'sensor_range', np.inf))
+    valid = np.isfinite(dists) & (dists <= sensor_range + 1e-6)
+    num_sensed = int(np.sum(valid))
+    min_center_dist = float(np.min(dists[valid])) if num_sensed > 0 else float('nan')
+    human_world = rel_traj[valid, 1:, :] + robot_pos.reshape(1, 1, 2)
+    return human_world.astype(float), num_sensed, min_center_dist
+
+
+def _compute_mpc_action(mpc_controller, obs, baseEnv, config, test_args, fixed_kappa=None):
+    r_node = obs['robot_node'][0, 0].detach().cpu().numpy().astype(float)
+    r_vel = obs['temporal_edges'][0, 0].detach().cpu().numpy().astype(float)
+    robot_pos = r_node[:2]
+    goal = r_node[3:5]
+    kappa = float(baseEnv.robot.lora_scale if fixed_kappa is None else fixed_kappa)
+    kappa = float(np.clip(kappa, 0.0, 1.0))
+    d_min = 1.0 - kappa
+    human_predictions, num_sensed, min_human_distance = _extract_mpc_human_predictions(obs, baseEnv, config)
+    result = mpc_controller.solve(robot_pos, r_vel, goal, human_predictions, d_min)
+    action = torch.tensor(result.velocity.reshape(1, 2), dtype=torch.float32, device=obs['robot_node'].device)
+    stats = {
+        'kappa': kappa,
+        'd_min': float(d_min),
+        'solve_time_ms': float(result.solve_time_ms),
+        'solved': bool(result.solved),
+        'action': [float(result.velocity[0]), float(result.velocity[1])],
+        'num_sensed_humans': num_sensed,
+        'min_human_distance': min_human_distance,
+    }
+    return action, stats
 
 
 def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False, test_args=None, video_save_path=None):
@@ -403,10 +489,10 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         eval_predictor_this_run = True
 
     if config.robot.policy not in ['orca', 'social_force']:
-        if behaviour == 'adaptive_action_gt' and not _has_lora_modules(actor_critic):
-            raise ValueError('adaptive_action_gt requires a neural policy with LoRA modules')
-        if behaviour == 'adaptive_fullfinetune_gt' and not _has_lora_modules(actor_critic):
-            raise ValueError('adaptive_fullfinetune_gt requires the LoRA model as W_base')
+        if behaviour in {'adaptive_action_gt', 'fixed_action_scale'} and not _has_lora_modules(actor_critic):
+            raise ValueError(f'{behaviour} requires a neural policy with LoRA modules')
+        if behaviour in {'adaptive_fullfinetune_gt', 'fixed_fullfinetune_scale'} and not _has_lora_modules(actor_critic):
+            raise ValueError(f'{behaviour} requires the LoRA model as W_base')
 
         eval_recurrent_hidden_states = {}
 
@@ -418,7 +504,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         eval_recurrent_hidden_states['human_human_edge_rnn'] = torch.zeros(num_processes, edge_num,
                                                                            actor_critic.base.human_human_edge_rnn_size,
                                                                            device=device)
-    elif behaviour in {'adaptive_action_gt', 'adaptive_fullfinetune_gt'}:
+    elif behaviour in {'adaptive_action_gt', 'fixed_action_scale', 'adaptive_fullfinetune_gt', 'fixed_fullfinetune_scale'}:
         raise ValueError(f'{behaviour} is only supported for neural LoRA policies')
 
     fullfinetune_interpolator = _maybe_build_fullfinetune_interpolator(
@@ -442,6 +528,14 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
 
     all_path_len = []
     all_avg_uncertainty = []
+    inference_times_ms = []
+    inference_peak_gpu_memory_mb = []
+    matrix_calc_times_ms = []
+    mpc_solve_times_ms = []
+    mpc_solved_flags = []
+    mpc_dmins = []
+    mpc_sensed_human_counts = []
+    mpc_min_human_distances = []
 
     # Store detailed per-episode data
     episodes_data = []
@@ -452,6 +546,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     else:
         baseEnv = eval_envs.venv.unwrapped.envs[0].env
     time_limit = baseEnv.time_limit
+    mpc_controller = None
+    if behaviour in {'mpc_adaptive', 'mpc_fixed'}:
+        mpc_controller = _build_mpc_controller(config, baseEnv, test_args)
 
     # Experiment ID logic (moved up for video saving)
     user_exp_id = getattr(test_args, 'exp_id', None)
@@ -484,6 +581,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         stepCounter = 0
         episode_rew = 0
         obs = eval_envs.reset()
+        if mpc_controller is not None:
+            mpc_controller.reset(obs['temporal_edges'][0, 0].detach().cpu().numpy())
         out_pred = obs['spatial_edges'][:, :, :].to('cpu').numpy()[0]
         outs = baseEnv.talk2Env(out_pred)
         aci_predicted_conformity_scores, aci_cost = outs#np.array([o[0] for o in outs]) # [num_envs, num_humans, num_pred_steps]
@@ -511,7 +610,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             eval_recurrent_hidden_states['human_human_edge_rnn'] = torch.zeros(num_processes, edge_num,
                                                                             actor_critic.base.human_human_edge_rnn_size,
                                                                             device=device)
-            if behaviour == 'adaptive_action_gt':
+            if behaviour in {'adaptive_action_gt', 'fixed_action_scale'}:
                 endpoint_hidden_states = {
                     'cons': {key: value.clone() for key, value in eval_recurrent_hidden_states.items()},
                     'coop': {key: value.clone() for key, value in eval_recurrent_hidden_states.items()},
@@ -542,12 +641,18 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             _apply_lora_scale(actor_critic, baseEnv, 0.0)
         elif behaviour == 'fixed_scale':
             _apply_lora_scale(actor_critic, baseEnv, getattr(test_args, 'lora_scale', 1.0))
+        elif behaviour == 'fixed_action_scale':
+            _apply_lora_scale(actor_critic, baseEnv, getattr(test_args, 'lora_scale', 1.0), update_modules=False)
+        elif behaviour == 'fixed_fullfinetune_scale':
+            _apply_lora_scale(actor_critic, baseEnv, getattr(test_args, 'lora_scale', 1.0), update_modules=False)
+        elif behaviour == 'mpc_fixed':
+            _apply_lora_scale(actor_critic, baseEnv, getattr(test_args, 'lora_scale', 1.0), update_modules=False)
 
 
         # Behaviours that drive the per-step adaptive/switching loop.
         _ADAPTIVE_BEHAVIOURS = {
             'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred',
-            'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
+            'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'mpc_adaptive', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
         }
 
         if scenario == 'seperate_mixed_5050':
@@ -606,6 +711,11 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         if behaviour == 'adaptive_fullfinetune_gt':
             _set_lora_module_scale(actor_critic, 0.0)
             fullfinetune_interpolator.apply(baseEnv.robot.lora_scale)
+        elif behaviour == 'fixed_fullfinetune_scale':
+            fixed_dense_scale = getattr(test_args, 'lora_scale', 1.0)
+            _apply_lora_scale(actor_critic, baseEnv, fixed_dense_scale, update_modules=False)
+            _set_lora_module_scale(actor_critic, 0.0)
+            fullfinetune_interpolator.apply(fixed_dense_scale)
 
         # Initialize prev_predictions before the loop for tracking discrepancy
         prev_predictions = {}
@@ -768,7 +878,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         tn += 1
 
             # Continuous adaptive scale or majority-based switching
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'mpc_adaptive', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
                 robot_pos = baseEnv.robot.get_position()
                 robot_theta = obs['robot_node'][0, 0, 6].item() # robot heading
 
@@ -843,9 +953,13 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 if behaviour == 'adaptive_action_gt':
                     _apply_lora_scale(actor_critic, baseEnv, target_scale, update_modules=False)
                 elif behaviour == 'adaptive_fullfinetune_gt':
+                    # Store kappa now; applying W0 + kappa * DeltaWFT happens
+                    # inside the timed inference block so latency includes the
+                    # dense interpolation cost.
                     _apply_lora_scale(actor_critic, baseEnv, target_scale, update_modules=False)
                     _set_lora_module_scale(actor_critic, 0.0)
-                    fullfinetune_interpolator.apply(target_scale)
+                elif behaviour == 'mpc_adaptive':
+                    _apply_lora_scale(actor_critic, baseEnv, target_scale, update_modules=False)
                 else:
                     _apply_lora_scale(actor_critic, baseEnv, target_scale)
             
@@ -886,6 +1000,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 
                 episode_friendly_flags.append(bool(is_friendly))
 
+            mpc_step_stats = None
+
             step_data = {
                 'step': stepCounter,
                 'robot': {
@@ -904,10 +1020,39 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             episode_steps.append(step_data)
             episode_lora_scales.append(float(baseEnv.robot.lora_scale))
 
-            if config.robot.policy not in ['orca', 'social_force']:
-                # run inference on the NN policy
+            if behaviour in {'mpc_adaptive', 'mpc_fixed'}:
+                _infer_t0 = time.perf_counter()
+                action, mpc_step_stats = _compute_mpc_action(
+                    mpc_controller, obs, baseEnv, config, test_args,
+                    fixed_kappa=getattr(test_args, 'lora_scale', 1.0) if behaviour == 'mpc_fixed' else None,
+                )
+                inference_times_ms.append((time.perf_counter() - _infer_t0) * 1000.0)
+                inference_peak_gpu_memory_mb.append(0.0)
+                matrix_calc_times_ms.append(0.0)
+                mpc_solve_times_ms.append(mpc_step_stats['solve_time_ms'])
+                mpc_solved_flags.append(mpc_step_stats['solved'])
+                mpc_dmins.append(mpc_step_stats['d_min'])
+                mpc_sensed_human_counts.append(mpc_step_stats['num_sensed_humans'])
+                if not np.isnan(mpc_step_stats['min_human_distance']):
+                    mpc_min_human_distances.append(mpc_step_stats['min_human_distance'])
+                step_data['mpc'] = mpc_step_stats
+            elif config.robot.policy not in ['orca', 'social_force']:
+                # Time the policy decision path only: policy forward(s) plus
+                # behaviour-specific blending/interpolation, excluding env.step,
+                # rendering, JSON logging, and metric aggregation. Matrix time
+                # is a sub-measure: effective LoRA W0 + k*A*B computation for
+                # adaptive_gt, or dense W0 + k*DeltaWFT application for full-finetune
+                # paths. Action-space interpolation and non-adaptive baselines log 0.
+                profile_lora_matrix = behaviour == 'adaptive_gt'
+                if profile_lora_matrix:
+                    _set_lora_matrix_timing(actor_critic, True, reset=True)
+                if device.type == 'cuda':
+                    torch.cuda.synchronize(device)
+                    torch.cuda.reset_peak_memory_stats(device)
+                matrix_time_ms = 0.0
+                _infer_t0 = time.perf_counter()
                 with torch.no_grad():
-                    if behaviour == 'adaptive_action_gt':
+                    if behaviour in {'adaptive_action_gt', 'fixed_action_scale'}:
                         kappa_t = float(baseEnv.robot.lora_scale)
                         _set_lora_module_scale(actor_critic, 0.0)
                         _, action_cons, _, endpoint_hidden_states['cons'] = actor_critic.act(
@@ -923,12 +1068,49 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                             deterministic=True)
                         action = (1.0 - kappa_t) * action_cons + kappa_t * action_coop
                         _set_lora_module_scale(actor_critic, kappa_t)
+                    elif behaviour == 'adaptive_fullfinetune_gt':
+                        if device.type == 'cuda':
+                            torch.cuda.synchronize(device)
+                        _matrix_t0 = time.perf_counter()
+                        fullfinetune_interpolator.apply(float(baseEnv.robot.lora_scale))
+                        if device.type == 'cuda':
+                            torch.cuda.synchronize(device)
+                        matrix_time_ms = (time.perf_counter() - _matrix_t0) * 1000.0
+                        _, action, _, eval_recurrent_hidden_states = actor_critic.act(
+                            obs,
+                            eval_recurrent_hidden_states,
+                            eval_masks,
+                            deterministic=True)
+                    elif behaviour == 'fixed_fullfinetune_scale':
+                        if device.type == 'cuda':
+                            torch.cuda.synchronize(device)
+                        _matrix_t0 = time.perf_counter()
+                        fullfinetune_interpolator.apply(float(getattr(test_args, 'lora_scale', 1.0)))
+                        if device.type == 'cuda':
+                            torch.cuda.synchronize(device)
+                        matrix_time_ms = (time.perf_counter() - _matrix_t0) * 1000.0
+                        _, action, _, eval_recurrent_hidden_states = actor_critic.act(
+                            obs,
+                            eval_recurrent_hidden_states,
+                            eval_masks,
+                            deterministic=True)
                     else:
                         _, action, _, eval_recurrent_hidden_states = actor_critic.act(
                             obs,
                             eval_recurrent_hidden_states,
                             eval_masks,
                             deterministic=True)
+                if device.type == 'cuda':
+                    torch.cuda.synchronize(device)
+                if profile_lora_matrix:
+                    matrix_time_ms = _collect_lora_matrix_time_ms(actor_critic)
+                    _set_lora_matrix_timing(actor_critic, False)
+                if device.type == 'cuda':
+                    inference_peak_gpu_memory_mb.append(torch.cuda.max_memory_allocated(device) / (1024 ** 2))
+                else:
+                    inference_peak_gpu_memory_mb.append(0.0)
+                matrix_calc_times_ms.append(matrix_time_ms)
+                inference_times_ms.append((time.perf_counter() - _infer_t0) * 1000.0)
             else:
                 action = torch.zeros([1, 2], device=device)
             if not done:
@@ -1107,6 +1289,19 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                    np.mean(too_close_ratios), np.mean(min_dist), np.mean(all_avg_uncertainty),
                    np.mean([ep['avg_lora_scale'] for ep in episodes_data])))
 
+    if inference_times_ms:
+        logging.info(
+            'Inference latency: mean {:.4f} ms, std {:.4f} ms, p95 {:.4f} ms, steps {}'.
+                format(float(np.mean(inference_times_ms)),
+                       float(np.std(inference_times_ms, ddof=1)) if len(inference_times_ms) > 1 else 0.0,
+                       float(np.percentile(inference_times_ms, 95)),
+                       len(inference_times_ms)))
+        logging.info(
+            'Inference profiling: peak GPU memory max {:.4f} MB, matrix calc mean {:.4f} ms, p95 {:.4f} ms'.
+                format(float(np.max(inference_peak_gpu_memory_mb)) if inference_peak_gpu_memory_mb else 0.0,
+                       float(np.mean(matrix_calc_times_ms)) if matrix_calc_times_ms else 0.0,
+                       float(np.percentile(matrix_calc_times_ms, 95)) if matrix_calc_times_ms else 0.0))
+
     logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
     logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
     
@@ -1125,6 +1320,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         'lora_alpha': getattr(getattr(config, 'lora', object()), 'alpha', None),
         'lora_rank': getattr(getattr(config, 'lora', object()), 'rank', None),
         'lora_scale': lora_scale,
+        'mpc_horizon': int(getattr(config.sim, 'predict_steps', 5)),
+        'mpc_human_radius': getattr(test_args, 'mpc_human_radius', None),
+        'mpc_amax': getattr(test_args, 'mpc_amax', None),
         'fullfinetune_model_dir': getattr(test_args, 'fullfinetune_model_dir', None),
         'fullfinetune_test_model': getattr(test_args, 'fullfinetune_test_model', None),
         'test_model': getattr(test_args, 'test_model', None),
@@ -1139,6 +1337,25 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     avg_discrepancy_aware = np.mean(aware_scores) if aware_scores else 0.0
     avg_discrepancy_ignorant = np.mean(ignorant_scores) if ignorant_scores else 0.0
     avg_discrepancy_all = np.mean(all_scores) if all_scores else 0.0
+    inference_arr = np.asarray(inference_times_ms, dtype=float)
+    avg_inference_time_ms = float(np.mean(inference_arr)) if len(inference_arr) else 0.0
+    std_inference_time_ms = float(np.std(inference_arr, ddof=1)) if len(inference_arr) > 1 else 0.0
+    p95_inference_time_ms = float(np.percentile(inference_arr, 95)) if len(inference_arr) else 0.0
+    inference_mem_arr = np.asarray(inference_peak_gpu_memory_mb, dtype=float)
+    avg_inference_peak_gpu_memory_mb = float(np.mean(inference_mem_arr)) if len(inference_mem_arr) else 0.0
+    max_inference_peak_gpu_memory_mb = float(np.max(inference_mem_arr)) if len(inference_mem_arr) else 0.0
+    matrix_arr = np.asarray(matrix_calc_times_ms, dtype=float)
+    avg_matrix_calc_time_ms = float(np.mean(matrix_arr)) if len(matrix_arr) else 0.0
+    std_matrix_calc_time_ms = float(np.std(matrix_arr, ddof=1)) if len(matrix_arr) > 1 else 0.0
+    p95_matrix_calc_time_ms = float(np.percentile(matrix_arr, 95)) if len(matrix_arr) else 0.0
+    mpc_solve_arr = np.asarray(mpc_solve_times_ms, dtype=float)
+    avg_mpc_solve_time_ms = float(np.mean(mpc_solve_arr)) if len(mpc_solve_arr) else 0.0
+    p95_mpc_solve_time_ms = float(np.percentile(mpc_solve_arr, 95)) if len(mpc_solve_arr) else 0.0
+    mpc_success_count = int(np.sum(mpc_solved_flags)) if mpc_solved_flags else 0
+    mpc_failure_count = int(len(mpc_solved_flags) - mpc_success_count)
+    avg_mpc_dmin = float(np.mean(mpc_dmins)) if mpc_dmins else 0.0
+    avg_mpc_sensed_humans = float(np.mean(mpc_sensed_human_counts)) if mpc_sensed_human_counts else 0.0
+    avg_mpc_min_human_distance = float(np.mean(mpc_min_human_distances)) if mpc_min_human_distances else float('nan')
 
     full_experiment_data = {
         'exp_id': exp_id,
@@ -1168,6 +1385,22 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
             'n_intrusion_episodes': int(len(min_dist)),
             'avg_uncertainty': float(np.mean(all_avg_uncertainty)),
             'avg_lora_scale': float(np.mean([ep['avg_lora_scale'] for ep in episodes_data])),
+            'avg_inference_time_ms': avg_inference_time_ms,
+            'std_inference_time_ms': std_inference_time_ms,
+            'p95_inference_time_ms': p95_inference_time_ms,
+            'avg_inference_peak_gpu_memory_mb': avg_inference_peak_gpu_memory_mb,
+            'max_inference_peak_gpu_memory_mb': max_inference_peak_gpu_memory_mb,
+            'avg_matrix_calc_time_ms': avg_matrix_calc_time_ms,
+            'std_matrix_calc_time_ms': std_matrix_calc_time_ms,
+            'p95_matrix_calc_time_ms': p95_matrix_calc_time_ms,
+            'num_inference_steps': int(len(inference_times_ms)),
+            'avg_mpc_solve_time_ms': avg_mpc_solve_time_ms,
+            'p95_mpc_solve_time_ms': p95_mpc_solve_time_ms,
+            'mpc_success_count': mpc_success_count,
+            'mpc_failure_count': mpc_failure_count,
+            'avg_mpc_dmin': avg_mpc_dmin,
+            'avg_mpc_sensed_humans': avg_mpc_sensed_humans,
+            'avg_mpc_min_human_distance': avg_mpc_min_human_distance,
             'avg_discrepancy_aware': float(avg_discrepancy_aware),
             'avg_discrepancy_ignorant': float(avg_discrepancy_ignorant),
             'avg_discrepancy_all': float(avg_discrepancy_all),

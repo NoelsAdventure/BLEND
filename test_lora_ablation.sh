@@ -69,7 +69,7 @@ mkdir -p "$LOG_DIR/.counters"
 if [ -f "./gpu_affinity.sh" ]; then
     . ./gpu_affinity.sh
 fi
-BLEND_GPUS="${BLEND_GPUS:-$(blend_detect_gpus)}"
+BLEND_GPUS="$(blend_detect_gpus)"
 : > "$LOG_DIR/.counters/ok"
 : > "$LOG_DIR/.counters/fail"
 

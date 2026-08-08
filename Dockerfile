@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir \
     pandas \
     gym \
     scipy \
+    casadi \
     opencv-python \
     matplotlib \
     Cython \

@@ -17,6 +17,7 @@ class Config(object):
     policy = BaseConfig()
     robot = BaseConfig()
     lora = BaseConfig()
+    dense_delta = BaseConfig()
     #################### frequently tuned parameters ######################## 
     aci_related.considered_steps = 2
     aci_related.prediction_extra_buffer_size = 0.0
@@ -30,7 +31,7 @@ class Config(object):
     aci_related.noise_clip_for_cost = 0.00
     aci_related.only_circular = False #always false
     aci_related.only_prediction_line = False
-    constrained_rl_related.cost_limit = 0.8
+    constrained_rl_related.cost_limit = 0.4
     constrained_rl_related.lag_init = 0.10
     constrained_rl_related.lag_lr = 16e-4
     
@@ -41,13 +42,51 @@ class Config(object):
     env.val_size = 100
     env.test_size = 500
     # note = f"LoraF_invi_visi"
-    note = "Conservative_Backbone_CostLimit_0.8"
+
+
+
+    # note = "Fullfinetune_timetest2"
+
+    # lora.use_lora = False
+    # lora.rank = 1
+    # # Dense full-rank additive delta: W = W0 + Delta W_FT.
+    # dense_delta.use_dense_delta = True
+
+
+    # note = "Lora1_timetest2"
+
+    # lora.use_lora = True
+    # lora.rank = 1
+    # # Dense full-rank additive delta: W = W0 + Delta W_FT.
+    # dense_delta.use_dense_delta = False
+
+
+    # note = "Lora4_timetest2"
+
+    # lora.use_lora = True
+    # lora.rank = 4
+    # # Dense full-rank additive delta: W = W0 + Delta W_FT.
+    # dense_delta.use_dense_delta = False
+
+
+    note = "Fullfinetune_small"
+
+    lora.use_lora = False
+    dense_delta.use_dense_delta = False
+    lora.base_checkpoint = "trained_models/Conservative_medium/checkpoints/20832.pt"
+    dense_delta.base_checkpoint = "trained_models/Conservative_medium/checkpoints/20832.pt"
+
+    
+    # CUDA_VISIBLE_DEVICES=x OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python3 train.py --num-processes 16 --num-mini-batch 4
+
+    lora.rank = 1
+    # Dense full-rank additive delta: W = W0 + Delta W_FT.
+
     # whether robot is visible to humans (whether humans respond to the robot's motion)
     robot.visible = False # tag: 05/02/2024
     # LoRA config
-    lora.rank = 4
     lora.alpha = 128
-    lora.use_lora = False
+    dense_delta.save_delta_checkpoint = True
     # action space of the robot
     action_space = BaseConfig()
     # holonomic or unicycle

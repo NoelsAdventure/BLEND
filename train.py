@@ -18,6 +18,46 @@ from rl.networks.storage_safe import RolloutStorage
 
 from crowd_nav.configs.config import Config
 
+
+def _config_bool(config_obj, name, default=False):
+    return bool(getattr(config_obj, name, default))
+
+
+def _ensure_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
+def _save_policy_checkpoint(model, path, dense_delta_enabled=False, delta_path=None, base_checkpoint=None):
+    if dense_delta_enabled:
+        torch.save(network_utils.dense_delta_merged_state_dict(model), path)
+        if delta_path is not None:
+            torch.save(network_utils.dense_delta_state_dict(model, base_checkpoint), delta_path)
+    else:
+        torch.save(model.state_dict(), path)
+
+
+def _remap_lora_base_state_dict(state_dict, model):
+    """Load a normal checkpoint into LoRA-wrapped base_layer parameters."""
+    model_state_dict = model.state_dict()
+    remapped = {}
+    for key, value in state_dict.items():
+        if key in model_state_dict:
+            remapped[key] = value
+            continue
+
+        base_layer_key = key.replace(".weight", ".base_layer.weight").replace(".bias", ".base_layer.bias")
+        if base_layer_key in model_state_dict and model_state_dict[base_layer_key].shape == value.shape:
+            remapped[base_layer_key] = value
+    return remapped
+
+
+def _load_policy_state_dict(model, state_dict, lora_base_checkpoint=False):
+    if lora_base_checkpoint:
+        state_dict = _remap_lora_base_state_dict(state_dict, model)
+    return model.load_state_dict(state_dict, strict=False)
+
+
 def main():
     """
     Main function for training a robot policy network using PPO with cost constraints
@@ -30,14 +70,54 @@ def main():
         os.environ["WANDB_MODE"] = "disabled"
     
     env_config = config = Config()
+    if getattr(algo_args, 'note', None):
+        env_config.note = algo_args.note
+    if getattr(algo_args, 'robot_visible', None) is not None:
+        env_config.robot.visible = bool(algo_args.robot_visible)
+
+    if not hasattr(env_config, 'lora'):
+        env_config.lora = type(env_config.env)()
+    if not hasattr(env_config.lora, 'use_lora'):
+        env_config.lora.use_lora = False
+    if not hasattr(env_config.lora, 'rank'):
+        env_config.lora.rank = 4
+    if not hasattr(env_config.lora, 'alpha'):
+        env_config.lora.alpha = 128
+    if not hasattr(env_config.lora, 'base_checkpoint'):
+        env_config.lora.base_checkpoint = None
+    if getattr(algo_args, 'use_lora', None) is not None:
+        env_config.lora.use_lora = bool(algo_args.use_lora)
+    if getattr(algo_args, 'lora_rank', None) is not None:
+        env_config.lora.rank = int(algo_args.lora_rank)
+
+    if not hasattr(env_config, 'dense_delta'):
+        env_config.dense_delta = type(env_config.env)()
+        env_config.dense_delta.use_dense_delta = False
+        env_config.dense_delta.base_checkpoint = None
+        env_config.dense_delta.save_delta_checkpoint = True
+    if getattr(algo_args, 'dense_delta', False):
+        env_config.dense_delta.use_dense_delta = True
+    if getattr(algo_args, 'dense_delta_base_checkpoint', None):
+        env_config.dense_delta.base_checkpoint = algo_args.dense_delta_base_checkpoint
+    if getattr(algo_args, 'no_dense_delta_sidecar', False):
+        env_config.dense_delta.save_delta_checkpoint = False
+
+    lora_enabled = bool(getattr(getattr(env_config, 'lora', object()), 'use_lora', False))
+    if lora_enabled and getattr(algo_args, 'lora_base_checkpoint', None):
+        env_config.lora.base_checkpoint = algo_args.lora_base_checkpoint
+
+    dense_delta_enabled = _config_bool(env_config.dense_delta, 'use_dense_delta', False)
+    dense_delta_base_checkpoint = getattr(env_config.dense_delta, 'base_checkpoint', None) or algo_args.load_path
+    dense_delta_save_sidecar = _config_bool(env_config.dense_delta, 'save_delta_checkpoint', True)
+    lora_base_checkpoint = getattr(env_config.lora, 'base_checkpoint', None) if lora_enabled else None
+    if dense_delta_enabled and lora_enabled:
+        raise ValueError('dense_delta.use_dense_delta and lora.use_lora are mutually exclusive')
+    if lora_base_checkpoint and algo_args.resume:
+        raise ValueError('Use either --resume/--load-path or --lora-base-checkpoint, not both')
     
-    # Create unique model name based on configuration parameters
-    if hasattr(env_config, 'lora') and env_config.lora.use_lora:
-        # New LoRA naming convention: use config.note and append LoRA details
-        model_name = f"{env_config.note}_rank_{env_config.lora.rank}"
-    else:
-        # Keep original naming for standard models
-        model_name = f"{env_config.note}"
+    # Use config.note exactly as the output directory name. LoRA rank is recorded
+    # in training_summary.txt instead of being appended to the model folder.
+    model_name = f"{env_config.note}"
         
     env_config.model_name = model_name
     algo_args.output_dir = f"trained_models/{model_name}"
@@ -123,28 +203,37 @@ def main():
                               algo_args.human_node_rnn_size,
                               algo_args.human_human_edge_rnn_size)
 
-    # Resume training from checkpoint if specified
-    if algo_args.resume:
+    # Resume training from checkpoint if specified. Dense-delta mode always
+    # loads W0, then converts every floating parameter into frozen W0 + trainable delta.
+    if dense_delta_enabled:
+        load_path = dense_delta_base_checkpoint
+        load_mode = 'dense_delta_base'
+    elif algo_args.resume:
         load_path = algo_args.load_path
+        load_mode = 'resume'
+    elif lora_enabled and lora_base_checkpoint:
+        load_path = lora_base_checkpoint
+        load_mode = 'lora_base'
+    else:
+        load_path = None
+        load_mode = None
+
+    if load_path is not None:
+        if not os.path.exists(load_path):
+            raise FileNotFoundError(f"Base checkpoint not found: {load_path}")
         print(f"Loading weights from {load_path}")
         state_dict = torch.load(load_path, map_location=device, weights_only=False)
-        
-        # Map standard Linear to LoRA base_layer if LoRA is enabled
-        if hasattr(env_config, 'lora') and env_config.lora.use_lora:
-            new_state_dict = {}
-            model_state_dict = actor_critic.state_dict()
-            for key, value in state_dict.items():
-                base_layer_key = key.replace(".weight", ".base_layer.weight").replace(".bias", ".base_layer.bias")
-                if base_layer_key in model_state_dict:
-                    new_state_dict[base_layer_key] = value
-                else:
-                    new_state_dict[key] = value
-            state_dict = new_state_dict
 
         # Load weights into both networks
-        actor_critic.load_state_dict(state_dict, strict=False)
-        cost_actor_critic.load_state_dict(state_dict, strict=False)
+        map_lora_base = lora_enabled and load_mode in ('resume', 'lora_base')
+        _load_policy_state_dict(actor_critic, state_dict, lora_base_checkpoint=map_lora_base)
+        _load_policy_state_dict(cost_actor_critic, state_dict, lora_base_checkpoint=map_lora_base)
         print("Weights loaded successfully into both networks.")
+
+    if dense_delta_enabled:
+        actor_delta_names = network_utils.apply_dense_delta(actor_critic)
+        cost_delta_names = network_utils.apply_dense_delta(cost_actor_critic)
+        print(f"Dense-delta mode: {len(actor_delta_names)} actor tensors and {len(cost_delta_names)} cost tensors use frozen W0 + trainable delta")
 
     # Explicitly freeze all parameters except LoRA before passing to optimizer
     if hasattr(env_config, 'lora') and getattr(env_config.lora, 'use_lora', False):
@@ -225,9 +314,21 @@ def main():
         if use_lora:
             f.write(f"LoRA Rank: {env_config.lora.rank}\n")
             f.write(f"LoRA Alpha: {env_config.lora.alpha}\n")
+            f.write(f"LoRA Base Checkpoint: {lora_base_checkpoint}\n")
             
-        base_model = algo_args.load_path if algo_args.resume else "Randomly Initialized"
+        if dense_delta_enabled:
+            base_model = dense_delta_base_checkpoint
+        elif algo_args.resume:
+            base_model = algo_args.load_path
+        elif use_lora and lora_base_checkpoint:
+            base_model = lora_base_checkpoint
+        else:
+            base_model = "Randomly Initialized"
         f.write(f"Base Model: {base_model}\n")
+        f.write(f"Use Dense Delta: {dense_delta_enabled}\n")
+        if dense_delta_enabled:
+            f.write(f"Dense Delta Base Checkpoint: {dense_delta_base_checkpoint}\n")
+            f.write(f"Save Dense Delta Sidecar: {dense_delta_save_sidecar}\n")
         
         # Add parameter statistics
         for model, name in [(actor_critic, "Actor-Critic"), (cost_actor_critic, "Cost-Critic")]:
@@ -301,7 +402,7 @@ def main():
                 roullouts_obs_for_cost = {}
                 for key in rollouts.obs:
                     rollouts_obs[key] = rollouts.obs[key][step]
-                    roullouts_obs_for_cost[key] = rollouts.obs[key][step].clone()
+                    roullouts_obs_for_cost[key] = rollouts.obs[key][step]
                 
                 # Prepare hidden states for RNN networks
                 rollouts_hidden_s = {}
@@ -310,7 +411,7 @@ def main():
                     rollouts_hidden_s[key] = \
                         rollouts.recurrent_hidden_states[key][step]
                     rollouts_hidden_s_for_cost[key] = \
-                        rollouts.recurrent_hidden_states[key][step].clone()
+                        rollouts.recurrent_hidden_states[key][step]
                 
                 # Get action from main policy
                 value, action, action_log_prob, recurrent_hidden_states = \
@@ -322,7 +423,7 @@ def main():
                 cost_value, _, _, _ = \
                     cost_actor_critic.act(roullouts_obs_for_cost,
                                           rollouts_hidden_s_for_cost,
-                                          rollouts.masks[step].clone())
+                                          rollouts.masks[step])
 
             # Render environment if enabled
             if config.sim.render:
@@ -362,7 +463,7 @@ def main():
                 info['cost'] += aci_cost[i]
             
             # Update environment monitor with new observations
-            obs, reward, done, infos = envs.update_monitor(({key: obs[key].cpu().numpy() for key in obs}, reward.numpy(), done, infos))
+            obs, reward, done, infos = envs.update_monitor((obs, reward, done, infos))
             processed_costs = torch.tensor([[infos[i]['cost']] for i in range(len(infos))])
             
             # Process episode completion and logging
@@ -404,10 +505,28 @@ def main():
                         if not os.path.exists(cost_save_path_best):
                             os.mkdir(cost_save_path_best)
 
-                        torch.save(actor_critic.state_dict(),
-                                   os.path.join(save_path_best, 'PPO' + ".pt"))
-                        torch.save(cost_actor_critic.state_dict(),
-                                   os.path.join(cost_save_path_best, 'PPO_cost' + ".pt"))
+                        delta_path_best = None
+                        cost_delta_path_best = None
+                        if dense_delta_enabled and dense_delta_save_sidecar:
+                            delta_save_path_best = os.path.join(algo_args.output_dir, 'delta_best_model')
+                            cost_delta_save_path_best = os.path.join(algo_args.output_dir, 'cost_delta_best_model')
+                            _ensure_dir(delta_save_path_best)
+                            _ensure_dir(cost_delta_save_path_best)
+                            delta_path_best = os.path.join(delta_save_path_best, 'PPO_delta.pt')
+                            cost_delta_path_best = os.path.join(cost_delta_save_path_best, 'PPO_cost_delta.pt')
+
+                        _save_policy_checkpoint(
+                            actor_critic,
+                            os.path.join(save_path_best, 'PPO' + ".pt"),
+                            dense_delta_enabled=dense_delta_enabled,
+                            delta_path=delta_path_best,
+                            base_checkpoint=dense_delta_base_checkpoint)
+                        _save_policy_checkpoint(
+                            cost_actor_critic,
+                            os.path.join(cost_save_path_best, 'PPO_cost' + ".pt"),
+                            dense_delta_enabled=dense_delta_enabled,
+                            delta_path=cost_delta_path_best,
+                            base_checkpoint=dense_delta_base_checkpoint)
                 
                     # Log environment metrics to wandb
                     if wandb.run:
@@ -456,7 +575,6 @@ def main():
                 rollouts.masks[-1]).detach()
 
         # Compute returns and advantages using GAE
-        train_start = time.time()
         rollouts.compute_returns(next_value,
                                  cost_next_value,
                                  algo_args.use_gae,
@@ -464,7 +582,8 @@ def main():
                                  algo_args.gae_lambda,
                                  algo_args.use_proper_time_limits)
 
-        # Perform policy update
+        # Perform policy update. Synchronize around the update so train_time
+        # reflects the actual optimizer wall-clock time on CUDA.
         if len(episode_costs_for_updating_lagrange) > 0:
             mean_ep_costs = np.mean(np.array(episode_costs_for_updating_lagrange))
         else:
@@ -475,11 +594,19 @@ def main():
         else:
             mean_ep_rewards = 0.0
             
+        if device.type == 'cuda':
+            torch.cuda.synchronize(device)
+            torch.cuda.reset_peak_memory_stats(device)
+        train_start = time.perf_counter()
         value_loss, cost_value_loss, lag_factor, action_loss, dist_entropy, adv_targ_epoch, cost_adv_targ_epoch = agent.update(rollouts, mean_ep_costs)
+        if device.type == 'cuda':
+            torch.cuda.synchronize(device)
+        train_end = time.perf_counter()
+        update_time = train_end - train_start
+        peak_gpu_memory_mb = (torch.cuda.max_memory_allocated(device) / (1024 ** 2)) if device.type == 'cuda' else 0.0
+        total_train_time += update_time
 
         rollouts.after_update()
-        train_end = time.time()
-        total_train_time += (train_end - train_start)
         
         # Update progress bar postfix with latest metrics
         sr = np.mean(episode_success) if len(episode_success) > 0 else 0
@@ -510,7 +637,9 @@ def main():
                 "train/mean_ep_costs": mean_ep_costs,
                 "train/mean_ep_rewards": mean_ep_rewards,
                 "train/sim_time": total_sim_time,
-                "train/update_time": total_train_time
+                "train/update_time": total_train_time,
+                "train/update_time_per_iter": update_time,
+                "train/peak_gpu_memory_mb": peak_gpu_memory_mb
             })
 
         # Save model checkpoints periodically
@@ -525,11 +654,29 @@ def main():
             if not os.path.exists(cost_save_path):
                 os.mkdir(cost_save_path)
 
-            torch.save(actor_critic.state_dict(),
-                       os.path.join(save_path, '%.5i' % j + ".pt"))
+            delta_path = None
+            cost_delta_path = None
+            if dense_delta_enabled and dense_delta_save_sidecar:
+                delta_save_path = os.path.join(algo_args.output_dir, 'delta_checkpoints')
+                cost_delta_save_path = os.path.join(algo_args.output_dir, 'cost_delta_checkpoints')
+                _ensure_dir(delta_save_path)
+                _ensure_dir(cost_delta_save_path)
+                delta_path = os.path.join(delta_save_path, '%.5i' % j + ".pt")
+                cost_delta_path = os.path.join(cost_delta_save_path, '%.5i' % j + ".pt")
 
-            torch.save(cost_actor_critic.state_dict(),
-                       os.path.join(cost_save_path, '%.5i' % j + ".pt"))
+            _save_policy_checkpoint(
+                actor_critic,
+                os.path.join(save_path, '%.5i' % j + ".pt"),
+                dense_delta_enabled=dense_delta_enabled,
+                delta_path=delta_path,
+                base_checkpoint=dense_delta_base_checkpoint)
+
+            _save_policy_checkpoint(
+                cost_actor_critic,
+                os.path.join(cost_save_path, '%.5i' % j + ".pt"),
+                dense_delta_enabled=dense_delta_enabled,
+                delta_path=cost_delta_path,
+                base_checkpoint=dense_delta_base_checkpoint)
 
         # Print training progress
         if j % algo_args.log_interval == 0 and len(episode_rewards) > 1:
@@ -538,7 +685,8 @@ def main():
 
             pbar.write(
                 "Updates {}, num timesteps {}, FPS {} \n"
-                "Total Sim Time: {:.2f}s, Total Train Time: {:.2f}s\n"
+                "Total Sim Time: {:.2f}s, Total Train Time: {:.2f}s, "
+                "Last Update Time: {:.4f}s, Peak Update GPU Mem: {:.1f} MB\n"
                 "Last {} training episodes: mean/median reward {:.1f}/{:.1f}, "
                 "mean/median cost {:.1f}/{:.1f}, "
                 "min/max reward {:.1f}/{:.1f}\n".format(
@@ -547,6 +695,8 @@ def main():
                     int(total_num_steps / (end - start)),
                     total_sim_time,
                     total_train_time,
+                    update_time,
+                    peak_gpu_memory_mb,
                     len(episode_rewards),
                     np.mean(episode_rewards),
                     np.median(episode_rewards),
@@ -564,6 +714,8 @@ def main():
                                'fps': int(total_num_steps / (end - start)),
                                'sim_time': [total_sim_time],
                                'train_time': [total_train_time],
+                               'update_time_per_iter': [update_time],
+                               'peak_gpu_memory_mb': [peak_gpu_memory_mb],
                                'eprewmean': [np.mean(episode_rewards)],
                                'epcostmean': [np.mean(episode_costs)],
                                'epsuccessmean': [np.mean(episode_success)],

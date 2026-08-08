@@ -5,7 +5,6 @@ import torch
 import os
 from collections import deque
 
-import copy
 import pickle
 
 class VecPretextNormalizeDummy(VecEnvWrapper):
@@ -76,6 +75,19 @@ class VecPretextNormalizeDummy(VecEnvWrapper):
         reward = torch.from_numpy(reward).unsqueeze(dim=1).float() 
         return obs, reward, done, info
 
+    def update_monitor(self, data):
+        obs, reward, done, infos = data
+        update_monitor_info = getattr(self.venv, 'update_monitor_info', None)
+        if update_monitor_info is None:
+            obs_np = {key: obs[key].cpu().numpy() for key in obs} if isinstance(obs, dict) else obs.cpu().numpy()
+            reward_np = reward.cpu().numpy() if torch.is_tensor(reward) else reward
+            self.update_monitor_async((obs_np, reward_np, done, infos))
+            return self.update_monitor_wait()
+
+        reward_np = reward.cpu().numpy() if torch.is_tensor(reward) else reward
+        infos = update_monitor_info((reward_np, done, infos))
+        return obs, reward, done, infos
+
     def step_wait(self):
         obs, rews, done, infos = self.venv.step_wait()
 
@@ -138,7 +150,7 @@ class VecPretextNormalizeDummy(VecEnvWrapper):
         }
         
 
-        self.last_pos = copy.deepcopy(human_pos)
+        self.last_pos = human_pos.clone()
         self.step_counter = self.step_counter + 1
 
         return obs, rews, infos

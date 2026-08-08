@@ -74,6 +74,8 @@ BLEND_GPUS=0,1,2,3 MAX_PARALLEL=4 ./test_baselines.sh
 
 Note: if you face the problem of "Failed to initialize NVML: Unknown Error" inside the container you can refer to [this thread](https://stackoverflow.com/questions/72932940/failed-to-initialize-nvml-unknown-error-in-docker-after-few-hours).
 
+
+
 ## Components
 
 1.) `baselines`: Common tools.  

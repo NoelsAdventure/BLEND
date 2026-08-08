@@ -1,9 +1,11 @@
 import glob
 import os
 import math
+import time
 
 import torch
 import torch.nn as nn
+from torch.nn.utils import parametrize
 
 from rl.networks.envs import VecNormalize
 
@@ -31,15 +33,36 @@ class LoRALinear(nn.Module):
         nn.init.zeros_(self.lora_B)
         
         self.dynamic_scale = 1.0
+        self.profile_lora_matrix_time = False
+        self.lora_matrix_time_ms = 0.0
+        self.lora_matrix_events = []
 
         # Freeze base layer
         for param in self.base_layer.parameters():
             param.requires_grad = False
 
     def forward(self, x):
+        # Optional profiling measures the effective LoRA layer computation:
+        # W0 path plus k * A * B residual and the final add.
+        if getattr(self, 'profile_lora_matrix_time', False):
+            if x.is_cuda:
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record()
+                result = self.base_layer(x)
+                lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+                out = result + lora_out
+                end.record()
+                self.lora_matrix_events.append((start, end))
+                return out
+            t0 = time.perf_counter()
+            result = self.base_layer(x)
+            lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+            out = result + lora_out
+            self.lora_matrix_time_ms += (time.perf_counter() - t0) * 1000.0
+            return out
+
         result = self.base_layer(x)
-        
-        # Add LoRA branch with dynamic scaling
         lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
         return result + lora_out
 
@@ -65,11 +88,100 @@ class LoRAAdapter(nn.Module):
         nn.init.zeros_(self.lora_B)
         
         self.dynamic_scale = 1.0
+        self.profile_lora_matrix_time = False
+        self.lora_matrix_time_ms = 0.0
+        self.lora_matrix_events = []
 
     def forward(self, x):
         # Apply LoRA branch
-        lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+        if getattr(self, 'profile_lora_matrix_time', False):
+            if x.is_cuda:
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record()
+                lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+                end.record()
+                self.lora_matrix_events.append((start, end))
+            else:
+                t0 = time.perf_counter()
+                lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+                self.lora_matrix_time_ms += (time.perf_counter() - t0) * 1000.0
+        else:
+            lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
         return lora_out
+
+
+class DenseDeltaParametrization(nn.Module):
+    """Full-rank additive adapter: effective parameter = frozen W0 + trainable delta."""
+    def __init__(self, base_value):
+        super().__init__()
+        self.register_buffer('base', base_value.detach().clone())
+
+    def forward(self, delta):
+        return self.base + delta
+
+    def right_inverse(self, value):
+        return torch.zeros_like(value)
+
+
+def apply_dense_delta(model):
+    """Replace every floating direct parameter with W0 + delta parametrization."""
+    targets = []
+    for module_name, module in list(model.named_modules()):
+        for param_name, param in list(module.named_parameters(recurse=False)):
+            if param is None or not torch.is_floating_point(param):
+                continue
+            if parametrize.is_parametrized(module, param_name):
+                continue
+            full_name = f"{module_name}.{param_name}" if module_name else param_name
+            targets.append((full_name, module, param_name, param.detach().clone()))
+
+    delta_names = []
+    for full_name, module, param_name, base_value in targets:
+        parametrization = DenseDeltaParametrization(base_value)
+        parametrize.register_parametrization(module, param_name, parametrization, unsafe=True)
+        module.parametrizations[param_name].original.requires_grad = True
+        delta_names.append(full_name)
+    return delta_names
+
+
+def has_dense_delta(model):
+    return any(parametrize.is_parametrized(module) for module in model.modules())
+
+
+def dense_delta_merged_state_dict(model):
+    """Return a normal checkpoint state_dict containing W0 + delta tensors."""
+    state = {}
+    for name, tensor in model.state_dict().items():
+        if '.parametrizations.' not in name:
+            state[name] = tensor.detach().clone()
+
+    for module_name, module in model.named_modules():
+        if not parametrize.is_parametrized(module):
+            continue
+        for param_name in module.parametrizations.keys():
+            full_name = f"{module_name}.{param_name}" if module_name else param_name
+            state[full_name] = getattr(module, param_name).detach().clone()
+    return state
+
+
+def dense_delta_state_dict(model, base_checkpoint):
+    """Return delta-only tensors plus metadata for audit/reconstruction."""
+    deltas = {}
+    bases = {}
+    for module_name, module in model.named_modules():
+        if not parametrize.is_parametrized(module):
+            continue
+        for param_name in module.parametrizations.keys():
+            full_name = f"{module_name}.{param_name}" if module_name else param_name
+            param_obj = module.parametrizations[param_name]
+            deltas[full_name] = param_obj.original.detach().clone()
+            bases[full_name] = param_obj[0].base.detach().clone()
+    return {
+        'base_checkpoint': base_checkpoint,
+        'delta_state_dict': deltas,
+        'base_state_dict': bases,
+    }
 
 # Get a render function
 def get_render_func(venv):

@@ -3,16 +3,23 @@
 # Helpers for assigning background experiment jobs across visible CUDA devices.
 # Override with BLEND_GPUS, for example: BLEND_GPUS=0,1,2,3 ./test_baselines.sh
 
+_blend_gpu_list_is_valid() {
+    [[ "$1" =~ ^[0-9]+(,[0-9]+)*$ ]]
+}
+
 blend_detect_gpus() {
     if [ -n "${BLEND_GPUS:-}" ]; then
-        printf "%s" "$BLEND_GPUS"
-        return
+        if _blend_gpu_list_is_valid "$BLEND_GPUS"; then
+            printf "%s" "$BLEND_GPUS"
+            return
+        fi
+        echo "Ignoring invalid BLEND_GPUS='$BLEND_GPUS'; expected comma-separated CUDA ids like 0,1,2,3" >&2
     fi
 
     if command -v nvidia-smi >/dev/null 2>&1; then
         local ids
-        ids="$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | paste -sd, -)"
-        if [ -n "$ids" ]; then
+        ids="$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | tr -d '[:blank:]' | paste -sd, -)"
+        if [ -n "$ids" ] && _blend_gpu_list_is_valid "$ids"; then
             printf "%s" "$ids"
             return
         fi
@@ -33,6 +40,9 @@ blend_detect_gpus() {
 blend_gpu_for_job() {
     local job_index="$1"
     local gpu_list="${BLEND_GPUS:-$(blend_detect_gpus)}"
+    if ! _blend_gpu_list_is_valid "$gpu_list"; then
+        gpu_list="$(BLEND_GPUS= blend_detect_gpus)"
+    fi
     local old_ifs="$IFS"
     IFS=,
     read -r -a gpus <<< "$gpu_list"

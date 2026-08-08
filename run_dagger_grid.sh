@@ -38,7 +38,7 @@ mkdir -p "$LOG_DIR"
 if [ -f "./gpu_affinity.sh" ]; then
     . ./gpu_affinity.sh
 fi
-BLEND_GPUS="${BLEND_GPUS:-$(blend_detect_gpus)}"
+BLEND_GPUS="$(blend_detect_gpus)"
 
 START_TS=$(date +%s)
 echo "=========================================================="

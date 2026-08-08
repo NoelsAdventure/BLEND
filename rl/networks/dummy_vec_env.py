@@ -68,6 +68,14 @@ class DummyVecEnv(VecEnv):
     def talk2Env_wait(self):
         return [True]
 
+    def update_monitor_info(self, data):
+        reward, done, infos = data
+        updated_infos = []
+        for e in range(self.num_envs):
+            _, _, _, info = self.envs[e].update_monitor((None, reward[e], done[e], infos[e]))
+            updated_infos.append(info)
+        return updated_infos
+
     def _save_obs(self, e, obs):
         for k in self.keys:
             if k is None:

@@ -109,6 +109,24 @@ class ShmemVecEnv(VecEnv):
         
         return self._decode_obses(obs), np.array(rews), np.array(dones), infos
 
+    def update_monitor_info(self, data):
+        self.update_monitor_info_async(data)
+        return self.update_monitor_info_wait()
+
+    def update_monitor_info_async(self, data):
+        reward, done, infos = data
+        assert len(reward) == len(self.parent_pipes)
+        assert len(done) == len(self.parent_pipes)
+        assert len(infos) == len(self.parent_pipes)
+        for pipe, r, d, i in zip(self.parent_pipes, reward, done, infos):
+            pipe.send(('update_monitor_info', (r, d, i)))
+        self.waiting_update_monitor = True
+
+    def update_monitor_info_wait(self):
+        infos = [pipe.recv() for pipe in self.parent_pipes]
+        self.waiting_update_monitor = False
+        return infos
+
     # def cost2Env_async(self, cost):
     #     assert len(cost) == len(self.parent_pipes)
     #     for pipe, c in zip(self.parent_pipes, cost):
@@ -183,6 +201,9 @@ def _subproc_worker(pipe, parent_pipe, env_fn_wrapper, obs_bufs, obs_shapes, obs
             elif cmd == 'update_monitor':
                 obs, reward, done, info = env.update_monitor((data[0], data[1], data[2], data[3]))
                 pipe.send((_write_obs(obs), reward, done, info))
+            elif cmd == 'update_monitor_info':
+                _, _, _, info = env.update_monitor((None, data[0], data[1], data[2]))
+                pipe.send(info)
             else:
                 raise RuntimeError('Got unrecognized cmd %s' % cmd)
     except KeyboardInterrupt:

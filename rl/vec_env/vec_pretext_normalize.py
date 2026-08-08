@@ -5,7 +5,6 @@ import torch
 import os
 from collections import deque
 
-import copy
 import pickle
 
 from gst_updated.src.gumbel_social_transformer.temperature_scheduler \
@@ -81,6 +80,19 @@ class VecPretextNormalize(VecEnvWrapper):
             obs = torch.from_numpy(obs).float().to(self.device)
         reward = torch.from_numpy(reward).unsqueeze(dim=1).float()
         return obs, reward, done, info
+
+    def update_monitor(self, data):
+        obs, reward, done, infos = data
+        update_monitor_info = getattr(self.venv, 'update_monitor_info', None)
+        if update_monitor_info is None:
+            obs_np = {key: obs[key].cpu().numpy() for key in obs} if isinstance(obs, dict) else obs.cpu().numpy()
+            reward_np = reward.cpu().numpy() if torch.is_tensor(reward) else reward
+            self.update_monitor_async((obs_np, reward_np, done, infos))
+            return self.update_monitor_wait()
+
+        reward_np = reward.cpu().numpy() if torch.is_tensor(reward) else reward
+        infos = update_monitor_info((reward_np, done, infos))
+        return obs, reward, done, infos
 
     def step_wait(self):
         obs, rews, done, infos = self.venv.step_wait()
@@ -190,9 +202,8 @@ class VecPretextNormalize(VecEnvWrapper):
 
         hr_dist_cur = torch.linalg.norm(O['spatial_edges'][:, :, :2], dim=-1)
         sorted_idx = torch.argsort(hr_dist_cur, dim=1)
-        # sorted_idx = sorted_idx.unsqueeze(-1).repeat(1, 1, 2*(self.config.sim.predict_steps+1))
-        for i in range(self.num_envs):
-            O['spatial_edges'][i] = O['spatial_edges'][i][sorted_idx[i]]
+        sort_index = sorted_idx.unsqueeze(-1).expand(-1, -1, O['spatial_edges'].size(-1))
+        O['spatial_edges'] = torch.gather(O['spatial_edges'], 1, sort_index)
 
         obs = {
             'robot_node': O['robot_node'],
@@ -208,7 +219,7 @@ class VecPretextNormalize(VecEnvWrapper):
                 # assert cost >= 0 and cost < 0.001
                 infos[i]['cost'] = cost.item()
 
-        self.last_pos = copy.deepcopy(human_pos)
+        self.last_pos = human_pos.clone()
         self.step_counter = self.step_counter + 1
 
         return obs, rews, infos

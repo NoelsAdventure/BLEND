@@ -11,6 +11,20 @@ def get_args():
 
     parser.add_argument(
         '--seed', type=int, default=42, help='random seed (default: 42)')
+    parser.add_argument(
+        '--note', type=str, default=None,
+        help='override config.note for this training run/output directory')
+    parser.add_argument(
+        '--robot-visible',
+        dest='robot_visible',
+        default=None,
+        action='store_true',
+        help='override config.robot.visible=True for this training run')
+    parser.add_argument(
+        '--robot-invisible',
+        dest='robot_visible',
+        action='store_false',
+        help='override config.robot.visible=False for this training run')
 
     parser.add_argument(
         '--num-processes',
@@ -49,6 +63,41 @@ def get_args():
         '--load-path', default='trained_models/GST_predictor_non_rand' +
                                '/checkpoints/41200.pt',
         help='path of weights for resume training')
+    parser.add_argument(
+        '--use-lora',
+        default=None,
+        action='store_true',
+        help='override config.lora.use_lora=True for this training run')
+    parser.add_argument(
+        '--no-use-lora',
+        dest='use_lora',
+        action='store_false',
+        help='override config.lora.use_lora=False for this training run')
+    parser.add_argument(
+        '--lora-rank',
+        type=int,
+        default=None,
+        help='override config.lora.rank for this training run')
+    parser.add_argument(
+        '--lora-base-checkpoint',
+        type=str,
+        default=None,
+        help='base W0 checkpoint for LoRA training; initializes frozen base weights without resuming training')
+    parser.add_argument(
+        '--dense-delta',
+        default=False,
+        action='store_true',
+        help='train a full-rank additive delta Delta W_FT while freezing W0')
+    parser.add_argument(
+        '--dense-delta-base-checkpoint',
+        type=str,
+        default=None,
+        help='base W0 checkpoint for dense-delta training; defaults to config.dense_delta.base_checkpoint or --load-path')
+    parser.add_argument(
+        '--no-dense-delta-sidecar',
+        default=False,
+        action='store_true',
+        help='disable saving delta-only sidecar checkpoints for dense-delta training')
     parser.add_argument(
         '--overwrite',
         default=True,
