@@ -91,14 +91,14 @@ CUDA_VISIBLE_DEVICES=x python train.py \
     --attention_size 992 \
     --num-env-steps 10000000
 
-CUDA_VISIBLE_DEVICES=x python train.py \
+CUDA_VISIBLE_DEVICES=0 python train.py \
     --note LoRA_small \
     --robot-visible \
     --use-lora \
     --lora-base-checkpoint trained_models/Conservative_small/checkpoints/02603.pt \
     --num-env-steps 10000000
 
-CUDA_VISIBLE_DEVICES=x python train.py \
+CUDA_VISIBLE_DEVICES=1 python train.py \
     --note Fullfinetune_small_v2 \
     --robot-visible \
     --resume \
@@ -106,3 +106,14 @@ CUDA_VISIBLE_DEVICES=x python train.py \
     --num-env-steps 10000000
 <!-- DONEEEE -->
 
+
+CUDA_VISIBLE_DEVICES=2 python train.py \
+      --note Conservative_giant \
+      --load-path "" \
+      --human_node_rnn_size 2816 \
+      --human_human_edge_rnn_size 256 \
+      --human_node_output_size 10240 \
+      --human_node_embedding_size 1408 \
+      --human_human_edge_embedding_size 64 \
+      --attention_size 1408 \
+      --num-env-steps 10000000

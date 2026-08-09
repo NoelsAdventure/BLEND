@@ -146,42 +146,34 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    model_configs = []
-    
-    # You can also manually define models to plot here:
-    # model_configs = [
-    #     {'path': 'trained_models/ours_gst_visible_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (random:visi)'},
-    #     {'path': 'trained_models/Ours_GST', 'name': 'Fulltune (random:invi)'},
-    #     {'path': 'trained_models/Fulltune_visi_invi_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (visi:invi)'},
-    #     {'path': 'trained_models/LoraC_visi_invi_alpha_1024', 'name': 'LoraA (visi:invi)'},
-    #     {'path': 'trained_models/LORA_visi_invi_alpha_1024', 'name': 'LoraB (visi:invi)'},
-    #     {'path': 'trained_models/LoraB_visi_invi_alpha_1024', 'name': 'LoraC (visi:invi)'},
-    # ]
-
-    # model_configs = [
-    #     {'path': 'trained_models/ours_gst_visible_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Old'},
-    #     {'path': 'trained_models/Fulltune_random_visi_seed_42_curr_buffer_0.25_c_l_0.4_clip_param_0.08_considered_steps_2_alpha_0.1_noise_0_0.0', 'name': 'Fulltune (visi:invi)'},
-    #     {'path': 'trained_models/Fulltune_random_visi_seed_42', 'name': 'New'},
-    #     {'path': 'trained_models/LoraC_visi_invi_seed_42', 'name': 'New'},
-    # ]
-
-
-    model_configs = [
-        {'path': 'trained_models/LoraZ_invi_visi_rank_4', 'name': 'LoRA_A'},
-        {'path': 'trained_models/LoraF_invi_visi_rank_1', 'name': 'LoRA_B'},
-        {'path': 'trained_models/LoraZ_invi_visi_rank_1', 'name': 'LoRA_C'},
-        {'path': 'trained_models/FullFineTune_invi_visi', 'name': 'FullFineTune'},
+    default_model_configs = [
+        {'path': 'trained_models/Conservative_small', 'name': 'Conservative small'},
+        {'path': 'trained_models/LoRA_small', 'name': 'LoRA small'},
+        {'path': 'trained_models/Fullfinetune_small_v2', 'name': 'Fullfinetune small'},
+        {'path': 'trained_models/Conservative_medium', 'name': 'Conservative medium'},
+        {'path': 'trained_models/LoRA_medium', 'name': 'LoRA medium'},
+        {'path': 'trained_models/Fullfinetune_medium', 'name': 'Fullfinetune medium'},
+        {'path': 'trained_models/Conservative_large', 'name': 'Conservative large'},
+        {'path': 'trained_models/LoRA_large', 'name': 'LoRA large'},
+        {'path': 'trained_models/Fullfinetune_large', 'name': 'Fullfinetune large'},
+        {'path': 'trained_models/Conservative_giant', 'name': 'Conservative giant'},
+        {'path': 'trained_models/LoRA_giant', 'name': 'LoRA giant'},
+        {'path': 'trained_models/Fullfinetune_giant', 'name': 'Fullfinetune giant'},
+        {'path': 'trained_models/Fullfinetune_small', 'name': 'Fullfinetune small from Ours_GST'},
     ]
 
+    model_configs = []
     if args.dirs:
         for d in args.dirs:
             if ':' in d:
                 path, name = d.split(':', 1)
             else:
                 path = d
-                name = os.path.basename(d)
+                name = os.path.basename(d.rstrip('/'))
             model_configs.append({'path': path, 'name': name})
-    
+    else:
+        model_configs = default_model_configs
+
     if not model_configs:
         # If no dirs provided, try to find all dirs in trained_models that have progress.csv
         base_dir = 'trained_models'

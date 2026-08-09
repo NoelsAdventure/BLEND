@@ -44,7 +44,7 @@ def main():
     parser.add_argument('--save_slides', default=False, action='store_true')
     # dynamic LoRA scale for testing gradual changes
     parser.add_argument('--lora_scale', type=float, default=1.0)
-    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'fixed_action_scale', 'adaptive_fullfinetune_gt', 'fixed_fullfinetune_scale', 'mpc_adaptive', 'mpc_fixed', 'Gensafenav_cons_upcost', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred', 'none'], default='adaptive_discrepancy')
+    parser.add_argument('--lora_behaviour', type=str, choices=['always_off', 'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'Lora_AB', 'Lora_Dense', 'adaptive_action_gt', 'fixed_action_scale', 'adaptive_fullfinetune_gt', 'fixed_fullfinetune_scale', 'mpc_adaptive', 'mpc_fixed', 'Gensafenav_cons_upcost', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred', 'none'], default='adaptive_discrepancy')
     parser.add_argument('--discrepancy_threshold', type=float, default=0.05, help='Threshold for classifying a human as aware/friendly based on discrepancy score')
     parser.add_argument('--discrepancy_m', type=int, default=1, help='Number of consecutive times the score must be above threshold to classify as aware')
     parser.add_argument('--exp_id', type=str, default=None)
@@ -137,6 +137,27 @@ def main():
     if test_args.robot_v_pref is not None:
         env_config.robot.v_pref = test_args.robot_v_pref
         logging.info(f"Overriding robot.v_pref to {env_config.robot.v_pref}")
+
+    # Some LoRA training runs are created through CLI overrides, while the
+    # copied config.py still says lora.use_lora=False. Infer LoRA evaluation
+    # from the model folder/behaviour so LoRA checkpoints instantiate the
+    # wrapped Linear layers before load_state_dict().
+    if not hasattr(env_config, 'lora'):
+        env_config.lora = type(env_config.env)()
+    model_dir_name = os.path.basename(model_dir_temp).lower()
+    lora_eval_behaviours = {
+        'always_on', 'fixed_scale', 'switching_gt', 'switching_discrepancy',
+        'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'Lora_AB', 'Lora_Dense',
+        'adaptive_action_gt', 'fixed_action_scale', 'adaptive_fullfinetune_gt',
+        'fixed_fullfinetune_scale', 'adaptive_discrepancy',
+        'adaptive_discrepancynew', 'adaptive_pred',
+    }
+    if model_dir_name.startswith('lora') or test_args.lora_behaviour in lora_eval_behaviours:
+        env_config.lora.use_lora = True
+        if not hasattr(env_config.lora, 'rank'):
+            env_config.lora.rank = 1
+        if not hasattr(env_config.lora, 'alpha'):
+            env_config.lora.alpha = 128
 
     env_config.aci_related.noise_clip_for_conformity_scores = 0.0
     env_config.aci_related.noise_std_for_conformity_scores = 0.0

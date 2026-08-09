@@ -68,13 +68,27 @@ free_gpu() {
     return 1
 }
 
+cuda_gpu_is_usable() {
+    local gpu="$1"
+    CUDA_VISIBLE_DEVICES="$gpu" python3 - <<'PYCUDA' >/dev/null 2>&1
+import torch
+if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+    raise SystemExit(1)
+torch.empty(1, device='cuda')
+torch.cuda.synchronize()
+PYCUDA
+}
+
 wait_for_free_gpu() {
     local gpu
     while true; do
         gpu="$(free_gpu || true)"
         if [ -n "$gpu" ]; then
-            echo "$gpu"
-            return 0
+            if cuda_gpu_is_usable "$gpu"; then
+                echo "$gpu"
+                return 0
+            fi
+            log "WAIT  GPU=$gpu is free but CUDA is not usable in this container; retrying" >&2
         fi
         sleep 30
     done
@@ -172,33 +186,9 @@ maybe_launch_dependent() {
 log "Training chain starting"
 log "GPUs=$BLEND_GPUS NUM_ENV_STEPS=$NUM_ENV_STEPS NUM_PROCESSES=$NUM_PROCESSES LORA_RANK=$LORA_RANK LOG_DIR=$LOG_DIR"
 
-maybe_launch_backbone Conservative_small
-maybe_launch_backbone Conservative_medium \
-    --human_node_rnn_size 960 \
-    --human_human_edge_rnn_size 256 \
-    --human_node_output_size 1920 \
-    --human_node_embedding_size 480 \
-    --human_human_edge_embedding_size 64 \
-    --attention_size 480
-maybe_launch_backbone Conservative_large \
-    --human_node_rnn_size 1984 \
-    --human_human_edge_rnn_size 256 \
-    --human_node_output_size 7168 \
-    --human_node_embedding_size 992 \
-    --human_human_edge_embedding_size 64 \
-    --attention_size 992
-
-if ! model_finished "Fullfinetune_small"; then
-    gpu="$(wait_for_free_gpu)"
-    launch_job "$gpu" Fullfinetune_small \
-        --note Fullfinetune_small \
-        --robot-visible \
-        --resume \
-        --load-path trained_models/Ours_GST/checkpoints/05207.pt \
-        --num-env-steps "$NUM_ENV_STEPS"
-else
-    log "SKIP  Fullfinetune_small already has an existing completed run"
-fi
+# First-stage backbone jobs are intentionally not launched here. This chain now
+# assumes Conservative_small/medium/large and Fullfinetune_small already exist,
+# then trains the rebuttal LoRA/full-finetune jobs.
 
 maybe_launch_dependent LoRA_medium Conservative_medium lora \
     --human_node_rnn_size 960 \
@@ -228,6 +218,8 @@ maybe_launch_dependent Fullfinetune_large Conservative_large resume \
     --human_node_embedding_size 992 \
     --human_human_edge_embedding_size 64 \
     --attention_size 992
+
+# Lower priority: run small LoRA/full-finetune last.
 maybe_launch_dependent LoRA_small Conservative_small lora
 maybe_launch_dependent Fullfinetune_small_v2 Conservative_small resume
 

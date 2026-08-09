@@ -1,9 +1,13 @@
 import json
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import os
 import csv
+import copy
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import uuid
 
@@ -179,7 +183,7 @@ def _compute_is_friendly(behaviour, human, human_idx, baseEnv,
     else:
         actual_friendly = bool(baseEnv.robot.visible)
 
-    if '_gt' in behaviour or behaviour == 'mpc_adaptive':
+    if '_gt' in behaviour or behaviour in {'mpc_adaptive', 'Lora_AB', 'Lora_Dense'}:
         is_friendly = actual_friendly
     elif '_pred' in behaviour:
         prob = pred_friendly_probs.get(human.id, 0.0)
@@ -256,18 +260,31 @@ def _apply_cluster_layout(baseEnv, cluster_spread=1.5, goal_jitter=1.0):
 def _set_lora_module_scale(actor_critic, scale):
     if actor_critic is None:
         return
-    from rl.networks.network_utils import LoRALinear, LoRAAdapter
+    from rl.networks.network_utils import (
+        LoRALinear, LoRAAdapter, DenseLoRALinearInference, DenseLoRAAdapterInference,
+    )
     for module in actor_critic.modules():
-        if isinstance(module, (LoRALinear, LoRAAdapter)):
+        if isinstance(module, (LoRALinear, LoRAAdapter, DenseLoRALinearInference, DenseLoRAAdapterInference)):
             module.dynamic_scale = float(scale)
 
 
-def _set_lora_matrix_timing(actor_critic, enabled, reset=False):
+def _set_lora_inference_mode(actor_critic, mode):
     if actor_critic is None:
         return
     from rl.networks.network_utils import LoRALinear, LoRAAdapter
     for module in actor_critic.modules():
         if isinstance(module, (LoRALinear, LoRAAdapter)):
+            module.set_lora_inference_mode(mode)
+
+
+def _set_lora_matrix_timing(actor_critic, enabled, reset=False):
+    if actor_critic is None:
+        return
+    from rl.networks.network_utils import (
+        LoRALinear, LoRAAdapter, DenseLoRALinearInference, DenseLoRAAdapterInference,
+    )
+    for module in actor_critic.modules():
+        if isinstance(module, (LoRALinear, LoRAAdapter, DenseLoRALinearInference, DenseLoRAAdapterInference)):
             module.profile_lora_matrix_time = bool(enabled)
             if reset:
                 module.lora_matrix_time_ms = 0.0
@@ -277,10 +294,12 @@ def _set_lora_matrix_timing(actor_critic, enabled, reset=False):
 def _collect_lora_matrix_time_ms(actor_critic):
     if actor_critic is None:
         return 0.0
-    from rl.networks.network_utils import LoRALinear, LoRAAdapter
+    from rl.networks.network_utils import (
+        LoRALinear, LoRAAdapter, DenseLoRALinearInference, DenseLoRAAdapterInference,
+    )
     total = 0.0
     for module in actor_critic.modules():
-        if isinstance(module, (LoRALinear, LoRAAdapter)):
+        if isinstance(module, (LoRALinear, LoRAAdapter, DenseLoRALinearInference, DenseLoRAAdapterInference)):
             total += float(getattr(module, 'lora_matrix_time_ms', 0.0))
             for start, end in getattr(module, 'lora_matrix_events', []):
                 total += float(start.elapsed_time(end))
@@ -297,37 +316,333 @@ def _apply_lora_scale(actor_critic, baseEnv, scale, update_modules=True):
         _set_lora_module_scale(actor_critic, scale)
 
 
-class _DenseFullFinetuneInterpolator:
-    """Interpolates loaded dense parameters against a full-finetune endpoint.
+def _replace_child_module(parent, attr, child):
+    if attr.isdigit() and isinstance(parent, (nn.Sequential, nn.ModuleList)):
+        parent[int(attr)] = child
+    else:
+        setattr(parent, attr, child)
 
-    The active policy is the LoRA model, but this baseline disables LoRA and
-    interpolates only dense weights. LoRA-only tensors are intentionally ignored.
-    """
+
+
+def _convert_lora_to_dense_residual_inference(actor_critic):
+    if actor_critic is None:
+        return 0
+    from rl.networks.network_utils import (
+        LoRALinear, LoRAAdapter, DenseLoRALinearInference, DenseLoRAAdapterInference,
+    )
+    replacements = []
+    for module_name, module in list(actor_critic.named_modules()):
+        if not module_name:
+            continue
+        if isinstance(module, LoRALinear):
+            replacements.append((module_name, DenseLoRALinearInference(module)))
+        elif isinstance(module, LoRAAdapter):
+            replacements.append((module_name, DenseLoRAAdapterInference(module)))
+
+    for module_name, replacement in replacements:
+        parts = module_name.split('.')
+        parent = actor_critic.get_submodule('.'.join(parts[:-1])) if len(parts) > 1 else actor_critic
+        _replace_child_module(parent, parts[-1], replacement)
+    return len(replacements)
+
+
+def _merge_lora_linear_endpoints(model, scale):
+    from rl.networks.network_utils import LoRALinear
+    replacements = []
+    for module_name, module in model.named_modules():
+        if not module_name or not isinstance(module, LoRALinear):
+            continue
+        base = module.base_layer
+        merged = nn.Linear(
+            base.in_features,
+            base.out_features,
+            bias=base.bias is not None,
+            device=base.weight.device,
+            dtype=base.weight.dtype,
+        )
+        with torch.no_grad():
+            delta = (module.lora_B @ module.lora_A) * module.scaling * float(scale)
+            merged.weight.copy_(base.weight + delta)
+            if base.bias is not None:
+                merged.bias.copy_(base.bias)
+        merged.requires_grad_(False)
+        replacements.append((module_name, merged))
+
+    for module_name, merged in replacements:
+        parts = module_name.split('.')
+        parent = model.get_submodule('.'.join(parts[:-1])) if len(parts) > 1 else model
+        _replace_child_module(parent, parts[-1], merged)
+    return len(replacements)
+
+
+def _build_action_endpoint_policies(actor_critic, device, logging):
+    """Build fixed LoRA-off/on policy copies for action-space interpolation."""
+    endpoints = {}
+    merged_counts = {}
+    for name, scale in (('cons', 0.0), ('coop', 1.0)):
+        endpoint = copy.deepcopy(actor_critic).to(device)
+        endpoint.eval()
+        for param in endpoint.parameters():
+            param.requires_grad_(False)
+        merged_counts[name] = _merge_lora_linear_endpoints(endpoint, scale)
+        endpoints[name] = endpoint
+
+    streams = None
+    if device.type == 'cuda':
+        streams = {
+            'cons': torch.cuda.Stream(device=device),
+            'coop': torch.cuda.Stream(device=device),
+        }
+    logging.info('Action-space interpolation uses merged fixed endpoint policy copies '
+                 f"(cons merged={merged_counts.get('cons', 0)}, coop merged={merged_counts.get('coop', 0)})"
+                 + (' with CUDA streams and threaded launch.' if streams is not None else '.'))
+    return endpoints, streams
+
+
+def _run_action_endpoint_on_stream(endpoint_model, obs, hidden_states, eval_masks, stream, device):
+    if stream is None:
+        with torch.no_grad():
+            return endpoint_model.act(obs, hidden_states, eval_masks, deterministic=True)
+    with torch.cuda.device(device):
+        with torch.cuda.stream(stream):
+            with torch.no_grad():
+                return endpoint_model.act(obs, hidden_states, eval_masks, deterministic=True)
+
+
+class _DenseDeltaLinear(nn.Module):
+    def __init__(self, base_layer, full_weight, full_bias=None):
+        super().__init__()
+        self.register_buffer('base_weight', base_layer.weight.detach().clone())
+        self.register_buffer('delta_weight', full_weight.detach().to(dtype=base_layer.weight.dtype, device=base_layer.weight.device) - self.base_weight)
+        if base_layer.bias is not None:
+            self.register_buffer('base_bias', base_layer.bias.detach().clone())
+            if full_bias is None:
+                self.register_buffer('delta_bias', torch.zeros_like(self.base_bias))
+            else:
+                self.register_buffer('delta_bias', full_bias.detach().to(dtype=base_layer.bias.dtype, device=base_layer.bias.device) - self.base_bias)
+        else:
+            self.base_bias = None
+            self.delta_bias = None
+        self.dynamic_scale = 0.0
+        self.profile_dense_matrix_time = False
+        self.dense_matrix_time_ms = 0.0
+        self.dense_matrix_events = []
+
+    def _forward_impl(self, x):
+        out = F.linear(x, self.base_weight, self.base_bias)
+        scale = float(self.dynamic_scale)
+        if scale != 0.0:
+            out = out + scale * F.linear(x, self.delta_weight, self.delta_bias)
+        return out
+
+    def forward(self, x):
+        if getattr(self, 'profile_dense_matrix_time', False):
+            if x.is_cuda:
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record()
+                out = self._forward_impl(x)
+                end.record()
+                self.dense_matrix_events.append((start, end))
+                return out
+            t0 = time.perf_counter()
+            out = self._forward_impl(x)
+            self.dense_matrix_time_ms += (time.perf_counter() - t0) * 1000.0
+            return out
+        return self._forward_impl(x)
+
+
+class _DenseDeltaGRU(nn.Module):
+    def __init__(self, base_gru, full_state, prefix, device):
+        super().__init__()
+        if base_gru.num_layers != 1 or base_gru.bidirectional or base_gru.batch_first:
+            raise ValueError('fast dense-delta GRU supports only one-layer, unidirectional, batch_first=False GRU')
+        self.input_size = base_gru.input_size
+        self.hidden_size = base_gru.hidden_size
+        self.num_layers = base_gru.num_layers
+        self.bias = base_gru.bias
+        self.batch_first = base_gru.batch_first
+        self.bidirectional = base_gru.bidirectional
+        self.dropout = base_gru.dropout
+        for name in ('weight_ih_l0', 'weight_hh_l0', 'bias_ih_l0', 'bias_hh_l0'):
+            base = getattr(base_gru, name).detach().clone()
+            full_key = f'{prefix}.{name}'
+            full = full_state[full_key].detach().to(device=device, dtype=base.dtype)
+            self.register_buffer(f'base_{name}', base)
+            self.register_buffer(f'delta_{name}', full - base)
+        self.dynamic_scale = 0.0
+        self.profile_dense_matrix_time = False
+        self.dense_matrix_time_ms = 0.0
+        self.dense_matrix_events = []
+
+    def flatten_parameters(self):
+        return None
+
+    def _linear(self, x, base_weight, delta_weight, base_bias, delta_bias):
+        out = F.linear(x, base_weight, base_bias)
+        scale = float(self.dynamic_scale)
+        if scale != 0.0:
+            out = out + scale * F.linear(x, delta_weight, delta_bias)
+        return out
+
+    def _forward_impl(self, x, hx=None):
+        if hx is None:
+            hx = torch.zeros(1, x.size(1), self.hidden_size, dtype=x.dtype, device=x.device)
+        h_t = hx[0]
+        outputs = []
+        for t in range(x.size(0)):
+            gi = self._linear(
+                x[t], self.base_weight_ih_l0, self.delta_weight_ih_l0,
+                self.base_bias_ih_l0, self.delta_bias_ih_l0,
+            )
+            gh = self._linear(
+                h_t, self.base_weight_hh_l0, self.delta_weight_hh_l0,
+                self.base_bias_hh_l0, self.delta_bias_hh_l0,
+            )
+            i_r, i_z, i_n = gi.chunk(3, dim=1)
+            h_r, h_z, h_n = gh.chunk(3, dim=1)
+            resetgate = torch.sigmoid(i_r + h_r)
+            updategate = torch.sigmoid(i_z + h_z)
+            newgate = torch.tanh(i_n + resetgate * h_n)
+            h_t = newgate + updategate * (h_t - newgate)
+            outputs.append(h_t)
+        output = torch.stack(outputs, dim=0)
+        return output, h_t.unsqueeze(0)
+
+    def forward(self, x, hx=None):
+        if getattr(self, 'profile_dense_matrix_time', False):
+            if x.is_cuda:
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record()
+                out = self._forward_impl(x, hx)
+                end.record()
+                self.dense_matrix_events.append((start, end))
+                return out
+            t0 = time.perf_counter()
+            out = self._forward_impl(x, hx)
+            self.dense_matrix_time_ms += (time.perf_counter() - t0) * 1000.0
+            return out
+        return self._forward_impl(x, hx)
+
+
+class _DenseFullFinetuneInterpolator:
+    """Fast W0 + k * DeltaWFT interpolation for dense full-finetune endpoints."""
     def __init__(self, actor_critic, full_state_dict, device):
         self.actor_critic = actor_critic
+        self.device = device
         self.entries = []
+        self.residual_modules = []
+        self.consumed_full_keys = set()
 
         if hasattr(full_state_dict, 'state_dict'):
             full_state_dict = full_state_dict.state_dict()
+        self.full_state_dict = full_state_dict
 
+        self._install_fast_residual_modules(actor_critic)
+        self._collect_fallback_entries(actor_critic)
+
+        if not self.residual_modules and not self.entries:
+            raise RuntimeError('full-finetune interpolation found no dense parameters to interpolate')
+
+    @staticmethod
+    def _full_key_for_base_param(name):
+        return name.replace('.base_layer.weight', '.weight').replace('.base_layer.bias', '.bias')
+
+    @staticmethod
+    def _parent_and_attr(root, module_name):
+        if not module_name:
+            raise ValueError('cannot replace root module')
+        parts = module_name.split('.')
+        parent = root.get_submodule('.'.join(parts[:-1])) if len(parts) > 1 else root
+        return parent, parts[-1]
+
+    @staticmethod
+    def _set_child(parent, attr, child):
+        if attr.isdigit() and isinstance(parent, (nn.Sequential, nn.ModuleList)):
+            parent[int(attr)] = child
+        else:
+            setattr(parent, attr, child)
+
+    def _tensor(self, key, ref):
+        if key not in self.full_state_dict:
+            raise RuntimeError(f'missing full-finetune param: {key}')
+        value = self.full_state_dict[key].detach().to(device=self.device, dtype=ref.dtype)
+        if tuple(value.shape) != tuple(ref.shape):
+            raise RuntimeError(f'full-finetune shape mismatch for {key}: base{tuple(ref.shape)} full{tuple(value.shape)}')
+        self.consumed_full_keys.add(key)
+        return value
+
+    def _install_fast_residual_modules(self, actor_critic):
+        from rl.networks.network_utils import LoRALinear
+        replaced_prefixes = []
+        for module_name, module in list(actor_critic.named_modules()):
+            if not module_name:
+                continue
+            if any(module_name.startswith(prefix + '.') for prefix in replaced_prefixes):
+                continue
+
+            parent_name = module_name.rsplit('.', 1)[0] if '.' in module_name else ''
+            parent_module = actor_critic.get_submodule(parent_name) if parent_name else actor_critic
+            if isinstance(parent_module, nn.MultiheadAttention):
+                continue
+
+            if isinstance(module, LoRALinear):
+                base = module.base_layer
+                weight_key = f'{module_name}.weight'
+                bias_key = f'{module_name}.bias'
+                if weight_key not in self.full_state_dict:
+                    continue
+                full_weight = self._tensor(weight_key, base.weight)
+                full_bias = None
+                if base.bias is not None:
+                    full_bias = self._tensor(bias_key, base.bias)
+                replacement = _DenseDeltaLinear(base, full_weight, full_bias)
+            elif isinstance(module, nn.Linear):
+                weight_key = f'{module_name}.weight'
+                bias_key = f'{module_name}.bias'
+                if weight_key not in self.full_state_dict:
+                    continue
+                full_weight = self._tensor(weight_key, module.weight)
+                full_bias = None
+                if module.bias is not None:
+                    full_bias = self._tensor(bias_key, module.bias)
+                replacement = _DenseDeltaLinear(module, full_weight, full_bias)
+            elif isinstance(module, nn.GRU):
+                required = [f'{module_name}.{n}' for n in ('weight_ih_l0', 'weight_hh_l0', 'bias_ih_l0', 'bias_hh_l0')]
+                if not all(k in self.full_state_dict for k in required):
+                    continue
+                for n in ('weight_ih_l0', 'weight_hh_l0', 'bias_ih_l0', 'bias_hh_l0'):
+                    self._tensor(f'{module_name}.{n}', getattr(module, n))
+                replacement = _DenseDeltaGRU(module, self.full_state_dict, module_name, self.device)
+            else:
+                continue
+
+            parent, attr = self._parent_and_attr(actor_critic, module_name)
+            self._set_child(parent, attr, replacement)
+            self.residual_modules.append(replacement)
+            replaced_prefixes.append(module_name)
+
+    def _collect_fallback_entries(self, actor_critic):
         missing = []
         mismatched = []
         for name, param in actor_critic.named_parameters():
             if 'lora_' in name:
                 continue
             full_key = self._full_key_for_base_param(name)
-            if full_key not in full_state_dict:
+            if full_key in self.consumed_full_keys:
+                continue
+            if full_key not in self.full_state_dict:
                 missing.append((name, full_key))
                 continue
-
-            full_value = full_state_dict[full_key].detach().to(device=device, dtype=param.dtype)
+            full_value = self.full_state_dict[full_key].detach().to(device=self.device, dtype=param.dtype)
             if tuple(full_value.shape) != tuple(param.shape):
                 mismatched.append((name, full_key, tuple(param.shape), tuple(full_value.shape)))
                 continue
-
             base_value = param.detach().clone()
             delta = full_value - base_value
             self.entries.append((param, base_value, delta))
+            self.consumed_full_keys.add(full_key)
 
         if missing or mismatched:
             parts = []
@@ -339,23 +654,37 @@ class _DenseFullFinetuneInterpolator:
                 parts.append(f'shape mismatches: {examples}')
             raise RuntimeError('full-finetune interpolation checkpoint mismatch: ' + '; '.join(parts))
 
-        if not self.entries:
-            raise RuntimeError('full-finetune interpolation found no dense parameters to interpolate')
-
-    @staticmethod
-    def _full_key_for_base_param(name):
-        return name.replace('.base_layer.weight', '.weight').replace('.base_layer.bias', '.bias')
-
     def apply(self, kappa):
         kappa = float(kappa)
-        with torch.no_grad():
-            for param, base_value, delta in self.entries:
-                param.copy_(base_value + kappa * delta)
+        for module in self.residual_modules:
+            module.dynamic_scale = kappa
+        if self.entries:
+            with torch.no_grad():
+                for param, base_value, delta in self.entries:
+                    param.copy_(base_value + kappa * delta)
+
+    def set_timing(self, enabled, reset=False):
+        for module in self.residual_modules:
+            module.profile_dense_matrix_time = bool(enabled)
+            if reset:
+                module.dense_matrix_time_ms = 0.0
+                module.dense_matrix_events = []
+
+    def collect_timing_ms(self):
+        total = 0.0
+        for module in self.residual_modules:
+            total += float(getattr(module, 'dense_matrix_time_ms', 0.0))
+            for start, end in getattr(module, 'dense_matrix_events', []):
+                total += float(start.elapsed_time(end))
+            module.dense_matrix_events = []
+        return total
 
     def restore_base(self):
-        with torch.no_grad():
-            for param, base_value, _ in self.entries:
-                param.copy_(base_value)
+        self.apply(0.0)
+        if self.entries:
+            with torch.no_grad():
+                for param, base_value, _ in self.entries:
+                    param.copy_(base_value)
 
 
 def _maybe_build_fullfinetune_interpolator(behaviour, actor_critic, test_args, device, logging):
@@ -376,7 +705,7 @@ def _maybe_build_fullfinetune_interpolator(behaviour, actor_critic, test_args, d
     interpolator = _DenseFullFinetuneInterpolator(actor_critic, full_state, device)
     interpolator.apply(0.0)
     _set_lora_module_scale(actor_critic, 0.0)
-    msg = f'Loaded {behaviour} endpoint from {ft_path}; interpolating {len(interpolator.entries)} dense tensors from the loaded base model.'
+    msg = (f'Loaded {behaviour} endpoint from {ft_path}; fast residual modules={len(interpolator.residual_modules)}, fallback copied tensors={len(interpolator.entries)}.')
     logging.info(msg)
     print(msg)
     return interpolator
@@ -442,6 +771,8 @@ def _compute_mpc_action(mpc_controller, obs, baseEnv, config, test_args, fixed_k
 
 def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging, config, args, model_dir, visualize=False, test_args=None, video_save_path=None):
     """ function to run all testing episodes and log the testing metrics """
+    eval_wall_start = time.perf_counter()
+
     # initializations
     eval_episode_rewards = []
     
@@ -455,6 +786,13 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     all_discrepancy_data = {'aware': [], 'ignorant': []}
 
     behaviour = getattr(test_args, 'lora_behaviour', 'none')
+    if behaviour == 'Lora_Dense':
+        dense_lora_count = _convert_lora_to_dense_residual_inference(actor_critic)
+        msg = f'Lora_Dense converted {dense_lora_count} LoRA modules to cached dense residual inference.'
+        logging.info(msg)
+        print(msg)
+    elif behaviour == 'Lora_AB':
+        _set_lora_inference_mode(actor_critic, 'ab')
     predictor_tag = getattr(test_args, 'predictor_tag', None) or None
     # Parse --render_only_cases into a set of ints; None = render all episodes.
     _roc = getattr(test_args, 'render_only_cases', None)
@@ -510,6 +848,16 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     fullfinetune_interpolator = _maybe_build_fullfinetune_interpolator(
         behaviour, actor_critic, test_args, device, logging
     )
+
+    action_endpoint_models = None
+    action_endpoint_streams = None
+    action_endpoint_executor = None
+    if config.robot.policy not in ['orca', 'social_force'] and behaviour in {'adaptive_action_gt', 'fixed_action_scale'}:
+        action_endpoint_models, action_endpoint_streams = _build_action_endpoint_policies(
+            actor_critic, device, logging
+        )
+        if action_endpoint_streams is not None:
+            action_endpoint_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='action_endpoint')
 
     eval_masks = torch.zeros(num_processes, 1, device=device)
 
@@ -652,7 +1000,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
         # Behaviours that drive the per-step adaptive/switching loop.
         _ADAPTIVE_BEHAVIOURS = {
             'switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred',
-            'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'mpc_adaptive', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
+            'adaptive_gt', 'Lora_AB', 'Lora_Dense', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'mpc_adaptive', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred',
         }
 
         if scenario == 'seperate_mixed_5050':
@@ -878,7 +1226,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         tn += 1
 
             # Continuous adaptive scale or majority-based switching
-            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'mpc_adaptive', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
+            if behaviour in ['switching_gt', 'switching_discrepancy', 'switching_discrepancynew', 'switching_pred', 'adaptive_gt', 'Lora_AB', 'Lora_Dense', 'adaptive_action_gt', 'adaptive_fullfinetune_gt', 'mpc_adaptive', 'adaptive_discrepancy', 'adaptive_discrepancynew', 'adaptive_pred']:
                 robot_pos = baseEnv.robot.get_position()
                 robot_theta = obs['robot_node'][0, 0, 6].item() # robot heading
 
@@ -1043,9 +1391,12 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 # is a sub-measure: effective LoRA W0 + k*A*B computation for
                 # adaptive_gt, or dense W0 + k*DeltaWFT application for full-finetune
                 # paths. Action-space interpolation and non-adaptive baselines log 0.
-                profile_lora_matrix = behaviour == 'adaptive_gt'
+                profile_lora_matrix = behaviour in {'adaptive_gt', 'Lora_AB', 'Lora_Dense'}
+                profile_dense_matrix = behaviour in {'adaptive_fullfinetune_gt', 'fixed_fullfinetune_scale'}
                 if profile_lora_matrix:
                     _set_lora_matrix_timing(actor_critic, True, reset=True)
+                if profile_dense_matrix:
+                    fullfinetune_interpolator.set_timing(True, reset=True)
                 if device.type == 'cuda':
                     torch.cuda.synchronize(device)
                     torch.cuda.reset_peak_memory_stats(device)
@@ -1054,20 +1405,49 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 with torch.no_grad():
                     if behaviour in {'adaptive_action_gt', 'fixed_action_scale'}:
                         kappa_t = float(baseEnv.robot.lora_scale)
-                        _set_lora_module_scale(actor_critic, 0.0)
-                        _, action_cons, _, endpoint_hidden_states['cons'] = actor_critic.act(
-                            obs,
-                            endpoint_hidden_states['cons'],
-                            eval_masks,
-                            deterministic=True)
-                        _set_lora_module_scale(actor_critic, 1.0)
-                        _, action_coop, _, endpoint_hidden_states['coop'] = actor_critic.act(
-                            obs,
-                            endpoint_hidden_states['coop'],
-                            eval_masks,
-                            deterministic=True)
+                        if action_endpoint_models is None:
+                            # Defensive fallback; normally built once before the episode loop.
+                            action_endpoint_models, action_endpoint_streams = _build_action_endpoint_policies(
+                                actor_critic, device, logging
+                            )
+
+                        if action_endpoint_streams is not None:
+                            if action_endpoint_executor is None:
+                                action_endpoint_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='action_endpoint')
+                            current_stream = torch.cuda.current_stream(device)
+                            action_endpoint_streams['cons'].wait_stream(current_stream)
+                            action_endpoint_streams['coop'].wait_stream(current_stream)
+
+                            cons_future = action_endpoint_executor.submit(
+                                _run_action_endpoint_on_stream,
+                                action_endpoint_models['cons'], obs, endpoint_hidden_states['cons'],
+                                eval_masks, action_endpoint_streams['cons'], device,
+                            )
+                            coop_future = action_endpoint_executor.submit(
+                                _run_action_endpoint_on_stream,
+                                action_endpoint_models['coop'], obs, endpoint_hidden_states['coop'],
+                                eval_masks, action_endpoint_streams['coop'], device,
+                            )
+                            _, action_cons, _, next_cons_hxs = cons_future.result()
+                            _, action_coop, _, next_coop_hxs = coop_future.result()
+
+                            current_stream.wait_stream(action_endpoint_streams['cons'])
+                            current_stream.wait_stream(action_endpoint_streams['coop'])
+                        else:
+                            _, action_cons, _, next_cons_hxs = action_endpoint_models['cons'].act(
+                                obs,
+                                endpoint_hidden_states['cons'],
+                                eval_masks,
+                                deterministic=True)
+                            _, action_coop, _, next_coop_hxs = action_endpoint_models['coop'].act(
+                                obs,
+                                endpoint_hidden_states['coop'],
+                                eval_masks,
+                                deterministic=True)
+
+                        endpoint_hidden_states['cons'] = next_cons_hxs
+                        endpoint_hidden_states['coop'] = next_coop_hxs
                         action = (1.0 - kappa_t) * action_cons + kappa_t * action_coop
-                        _set_lora_module_scale(actor_critic, kappa_t)
                     elif behaviour == 'adaptive_fullfinetune_gt':
                         if device.type == 'cuda':
                             torch.cuda.synchronize(device)
@@ -1075,7 +1455,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         fullfinetune_interpolator.apply(float(baseEnv.robot.lora_scale))
                         if device.type == 'cuda':
                             torch.cuda.synchronize(device)
-                        matrix_time_ms = (time.perf_counter() - _matrix_t0) * 1000.0
+                        matrix_time_ms += (time.perf_counter() - _matrix_t0) * 1000.0
                         _, action, _, eval_recurrent_hidden_states = actor_critic.act(
                             obs,
                             eval_recurrent_hidden_states,
@@ -1088,7 +1468,7 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                         fullfinetune_interpolator.apply(float(getattr(test_args, 'lora_scale', 1.0)))
                         if device.type == 'cuda':
                             torch.cuda.synchronize(device)
-                        matrix_time_ms = (time.perf_counter() - _matrix_t0) * 1000.0
+                        matrix_time_ms += (time.perf_counter() - _matrix_t0) * 1000.0
                         _, action, _, eval_recurrent_hidden_states = actor_critic.act(
                             obs,
                             eval_recurrent_hidden_states,
@@ -1105,6 +1485,9 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
                 if profile_lora_matrix:
                     matrix_time_ms = _collect_lora_matrix_time_ms(actor_critic)
                     _set_lora_matrix_timing(actor_critic, False)
+                if profile_dense_matrix:
+                    matrix_time_ms += fullfinetune_interpolator.collect_timing_ms()
+                    fullfinetune_interpolator.set_timing(False)
                 if device.type == 'cuda':
                     inference_peak_gpu_memory_mb.append(torch.cuda.max_memory_allocated(device) / (1024 ** 2))
                 else:
@@ -1357,12 +1740,18 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     avg_mpc_sensed_humans = float(np.mean(mpc_sensed_human_counts)) if mpc_sensed_human_counts else 0.0
     avg_mpc_min_human_distance = float(np.mean(mpc_min_human_distances)) if mpc_min_human_distances else float('nan')
 
+    eval_wall_time_sec = float(time.perf_counter() - eval_wall_start)
+    eval_episodes_per_sec = float(test_size / eval_wall_time_sec) if eval_wall_time_sec > 0 else 0.0
+
     full_experiment_data = {
         'exp_id': exp_id,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'config': important_config,
         'summary': {
             'num_episodes': test_size,
+            'wall_time_sec': eval_wall_time_sec,
+            'wall_time_min': eval_wall_time_sec / 60.0,
+            'episodes_per_sec': eval_episodes_per_sec,
             'success_rate': success_rate,
             'collision_rate': collision_rate,
             'timeout_rate': timeout_rate,
@@ -1508,5 +1897,8 @@ def evaluate(actor_critic, eval_envs, num_processes, device, test_size, logging,
     if fullfinetune_interpolator is not None:
         fullfinetune_interpolator.restore_base()
         _set_lora_module_scale(actor_critic, 0.0)
+
+    if action_endpoint_executor is not None:
+        action_endpoint_executor.shutdown(wait=True)
 
     eval_envs.close()

@@ -5,6 +5,7 @@ import time
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.utils import parametrize
 
 from rl.networks.envs import VecNormalize
@@ -36,35 +37,54 @@ class LoRALinear(nn.Module):
         self.profile_lora_matrix_time = False
         self.lora_matrix_time_ms = 0.0
         self.lora_matrix_events = []
+        self.lora_inference_mode = 'ab'
+        self.register_buffer('lora_delta_weight', torch.empty(out_features, in_features), persistent=False)
+        self.lora_delta_dirty = True
 
         # Freeze base layer
         for param in self.base_layer.parameters():
             param.requires_grad = False
 
+    def rebuild_lora_dense_delta(self):
+        with torch.no_grad():
+            self.lora_delta_weight.copy_((self.lora_B @ self.lora_A) * self.scaling)
+        self.lora_delta_dirty = False
+
+    def set_lora_inference_mode(self, mode):
+        if mode not in {'ab', 'dense'}:
+            raise ValueError(f'unknown LoRA inference mode: {mode}')
+        self.lora_inference_mode = mode
+        if mode == 'dense':
+            self.rebuild_lora_dense_delta()
+
+    def _lora_residual(self, x):
+        dropped = self.lora_dropout(x)
+        if getattr(self, 'lora_inference_mode', 'ab') == 'dense':
+            if getattr(self, 'lora_delta_dirty', True):
+                self.rebuild_lora_dense_delta()
+            return F.linear(dropped, self.lora_delta_weight) * self.dynamic_scale
+        return (dropped @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+
     def forward(self, x):
         # Optional profiling measures the effective LoRA layer computation:
-        # W0 path plus k * A * B residual and the final add.
+        # W0 path plus the scaled LoRA residual and final add.
         if getattr(self, 'profile_lora_matrix_time', False):
             if x.is_cuda:
                 start = torch.cuda.Event(enable_timing=True)
                 end = torch.cuda.Event(enable_timing=True)
                 start.record()
                 result = self.base_layer(x)
-                lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
-                out = result + lora_out
+                out = result + self._lora_residual(x)
                 end.record()
                 self.lora_matrix_events.append((start, end))
                 return out
             t0 = time.perf_counter()
             result = self.base_layer(x)
-            lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
-            out = result + lora_out
+            out = result + self._lora_residual(x)
             self.lora_matrix_time_ms += (time.perf_counter() - t0) * 1000.0
             return out
 
-        result = self.base_layer(x)
-        lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
-        return result + lora_out
+        return self.base_layer(x) + self._lora_residual(x)
 
 class LoRAAdapter(nn.Module):
     """
@@ -91,6 +111,29 @@ class LoRAAdapter(nn.Module):
         self.profile_lora_matrix_time = False
         self.lora_matrix_time_ms = 0.0
         self.lora_matrix_events = []
+        self.lora_inference_mode = 'ab'
+        self.register_buffer('lora_delta_weight', torch.empty(size, size), persistent=False)
+        self.lora_delta_dirty = True
+
+    def rebuild_lora_dense_delta(self):
+        with torch.no_grad():
+            self.lora_delta_weight.copy_((self.lora_B @ self.lora_A) * self.scaling)
+        self.lora_delta_dirty = False
+
+    def set_lora_inference_mode(self, mode):
+        if mode not in {'ab', 'dense'}:
+            raise ValueError(f'unknown LoRA inference mode: {mode}')
+        self.lora_inference_mode = mode
+        if mode == 'dense':
+            self.rebuild_lora_dense_delta()
+
+    def _lora_residual(self, x):
+        dropped = self.lora_dropout(x)
+        if getattr(self, 'lora_inference_mode', 'ab') == 'dense':
+            if getattr(self, 'lora_delta_dirty', True):
+                self.rebuild_lora_dense_delta()
+            return F.linear(dropped, self.lora_delta_weight) * self.dynamic_scale
+        return (dropped @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
 
     def forward(self, x):
         # Apply LoRA branch
@@ -99,16 +142,94 @@ class LoRAAdapter(nn.Module):
                 start = torch.cuda.Event(enable_timing=True)
                 end = torch.cuda.Event(enable_timing=True)
                 start.record()
-                lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+                lora_out = self._lora_residual(x)
                 end.record()
                 self.lora_matrix_events.append((start, end))
             else:
                 t0 = time.perf_counter()
-                lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+                lora_out = self._lora_residual(x)
                 self.lora_matrix_time_ms += (time.perf_counter() - t0) * 1000.0
         else:
-            lora_out = (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling * self.dynamic_scale
+            lora_out = self._lora_residual(x)
         return lora_out
+
+
+
+class DenseLoRALinearInference(nn.Module):
+    """Inference-only LoRA dense residual: y = xW0 + k * x(alpha BA)."""
+    def __init__(self, lora_layer):
+        super().__init__()
+        base_layer = lora_layer.base_layer
+        self.register_buffer('base_weight', base_layer.weight.detach().clone())
+        if base_layer.bias is not None:
+            self.register_buffer('base_bias', base_layer.bias.detach().clone())
+        else:
+            self.base_bias = None
+        with torch.no_grad():
+            delta_weight = (lora_layer.lora_B @ lora_layer.lora_A) * lora_layer.scaling
+        self.register_buffer('delta_weight', delta_weight.detach().clone())
+        self.dynamic_scale = float(getattr(lora_layer, 'dynamic_scale', 1.0))
+        self.profile_lora_matrix_time = False
+        self.lora_matrix_time_ms = 0.0
+        self.lora_matrix_events = []
+
+    def _forward_impl(self, x):
+        out = F.linear(x, self.base_weight, self.base_bias)
+        scale = float(self.dynamic_scale)
+        if scale != 0.0:
+            out = out + scale * F.linear(x, self.delta_weight, None)
+        return out
+
+    def forward(self, x):
+        if getattr(self, 'profile_lora_matrix_time', False):
+            if x.is_cuda:
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record()
+                out = self._forward_impl(x)
+                end.record()
+                self.lora_matrix_events.append((start, end))
+                return out
+            t0 = time.perf_counter()
+            out = self._forward_impl(x)
+            self.lora_matrix_time_ms += (time.perf_counter() - t0) * 1000.0
+            return out
+        return self._forward_impl(x)
+
+
+class DenseLoRAAdapterInference(nn.Module):
+    """Inference-only dense residual for standalone LoRA adapters."""
+    def __init__(self, lora_adapter):
+        super().__init__()
+        with torch.no_grad():
+            delta_weight = (lora_adapter.lora_B @ lora_adapter.lora_A) * lora_adapter.scaling
+        self.register_buffer('delta_weight', delta_weight.detach().clone())
+        self.dynamic_scale = float(getattr(lora_adapter, 'dynamic_scale', 1.0))
+        self.profile_lora_matrix_time = False
+        self.lora_matrix_time_ms = 0.0
+        self.lora_matrix_events = []
+
+    def _forward_impl(self, x):
+        scale = float(self.dynamic_scale)
+        if scale == 0.0:
+            return torch.zeros_like(x)
+        return scale * F.linear(x, self.delta_weight, None)
+
+    def forward(self, x):
+        if getattr(self, 'profile_lora_matrix_time', False):
+            if x.is_cuda:
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record()
+                out = self._forward_impl(x)
+                end.record()
+                self.lora_matrix_events.append((start, end))
+                return out
+            t0 = time.perf_counter()
+            out = self._forward_impl(x)
+            self.lora_matrix_time_ms += (time.perf_counter() - t0) * 1000.0
+            return out
+        return self._forward_impl(x)
 
 
 class DenseDeltaParametrization(nn.Module):
